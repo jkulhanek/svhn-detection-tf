@@ -9,6 +9,10 @@ TODO: add a table with results
 
 ## Tasks
 Tasks should be completed in chronological order.
+
+### Verify correct implementation of Straka's metric
+Verify that predictions are computed correctly (it returns a sane value) and the val_score is computed correctly from the obtained predictions.
+
 ### Implement COCO metrics
 COCO metric should validate the performance of the model during training and after the training finished. The implementation could be based on https://github.com/google/automl/blob/master/efficientdet/coco_metric.py and could used the predict function (similar to straka metric). In the fit function, the predictions are already computed. The metric could use pycocotools.
 
