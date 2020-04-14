@@ -23,9 +23,9 @@ def parse_args():
     parser.add_argument('--image_size', default=128, type=int)
     parser.add_argument('--pyramid_levels', default=3, type=int)
     parser.add_argument('--num_scales', default=1, type=int)
-    parser.add_argument('--learning_rate', default=0.08, type=float, help='0.16 in efficientdet')
-    parser.add_argument('--weight_decay', default=1e-5, type=float, help='4e-5 in efficientdet')
-    parser.add_argument('--momentum', default=0.1, type=float, help='0.9 in efficientdet')
+    parser.add_argument('--learning_rate', default=0.02, type=float, help='0.16 in efficientdet')
+    parser.add_argument('--weight_decay', default=1e-6, type=float, help='4e-5 in efficientdet')
+    parser.add_argument('--momentum', default=0.09, type=float, help='0.9 in efficientdet')
     parser.add_argument('--grad_clip', default=1.0, type=float, help='not used in efficientdet')
     parser.add_argument('--epochs', default=70, type=int)
     parser.add_argument('--test', action='store_true')
@@ -74,8 +74,9 @@ class RetinaTrainer:
         self._huber_loss = tf.keras.losses.Huber(reduction = tf.losses.Reduction.NONE)
         self._epoch = tf.Variable(0, trainable=False, dtype=tf.int32)
         self._epoch_step = tf.Variable(0, trainable=False, dtype=tf.int32)
-        self.scheduler = utils.WarmStartCosineDecay(0.16, args.epochs, self._num_minibatches, self._epoch, self._epoch_step)
-        self.wd_scheduler = utils.WarmStartCosineDecay(0.16, args.epochs, self._num_minibatches, self._epoch, self._epoch_step)
+        self._grad_clip = args.grad_clip
+        self.scheduler = utils.WarmStartCosineDecay(args.learning_rate, args.epochs, self._num_minibatches, self._epoch, self._epoch_step)
+        self.wd_scheduler = utils.WarmStartCosineDecay(args.weight_decay, args.epochs, self._num_minibatches, self._epoch, self._epoch_step)
         self.optimizer = tfa.optimizers.SGDW(
                 self.wd_scheduler,
                 learning_rate=self.scheduler,
@@ -110,7 +111,7 @@ class RetinaTrainer:
             regression_loss = utils.mask_reduce_sum_over_batch(regression_loss, r_mask)
             loss = class_loss + regression_loss
         grads = tp.gradient(loss, self.model.trainable_variables)
-        capped_grads = (tf.clip_by_value(grad, -1., 1.) for grad in grads)
+        capped_grads = (tf.clip_by_value(grad, -self._grad_clip, self._grad_clip) for grad in grads)
         self.optimizer.apply_gradients(zip(capped_grads, self.model.trainable_variables))
         return (loss, regression_loss, class_loss)
 
