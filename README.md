@@ -28,3 +28,10 @@ Augmentations should be the following (if I remember correctly): translation, ro
 
 ### Finetune object detection
 Experiment with iouthreshold and scorethreshold to obtain maximal performance out of the network. Also finetune/replace the combined non-maximum suppression (read the docs).
+
+### Evaluate on Straka's test set
+
+### Finetune performance
+Computing metrics could be done in better way
+mAP could be implemented as a keras metric
+Data pipeline could be optimized
