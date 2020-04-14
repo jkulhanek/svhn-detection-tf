@@ -1,6 +1,9 @@
 # svhn-detection-tf
 Object detection on SVHN dataset in tensorflow using efficientdet
 
+## Getting Started
+Please verify the validity of your changes before pushing by running `$ python train.py --test`.
+
 ## Experiments
 TODO: add a table with results
 
