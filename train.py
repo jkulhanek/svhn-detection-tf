@@ -14,12 +14,6 @@ from functools import partial
 from data import create_data
 import os
 
-# TODO: finish
-def predict_bounding_boxes(anchors, image_size, class_pred, regression_pred):
-    regression_pred = utils.bbox_from_fast_rcnn(anchors, regression_pred)
-    return tf.image.combined_non_max_suppression(
-        regression_pred, class_pred, 3, 5, iou_threshold=0.5, clip_boxes=True
-    ) 
 
 
 def parse_args(): 
@@ -54,16 +48,26 @@ def parse_args():
 
 
 class RetinaTrainer:
-    def __init__(self, model, dataset, val_dataset, args):
+    def __init__(self, model, anchors, dataset, val_dataset, args):
+        """
+        val_dataset is a tuple (dev, eval_dev), where the dev part is dataset with 
+        mapped gold boxes to anchors, whereas eval_dev is the raw dataset which has
+        to use batch size 1
+        """
+        assert isinstance(val_dataset, tuple)
+        assert len(val_dataset) == 2
         self.model = model
+        self.anchors = anchors
         self.args = args
         self.dataset = dataset \
             .batch(args.batch_size) \
             .prefetch(4)
 
-        self.val_dataset = val_dataset \
+        self.val_dataset = val_dataset[0] \
             .batch(args.batch_size) \
             .prefetch(4)
+
+        self.eval_dataset = val_dataset[1]
 
         # Prepare training
         self._num_minibatches = self.dataset.reduce(0, lambda a,x: a + 1) # TOO SLOW
@@ -84,6 +88,7 @@ class RetinaTrainer:
             'val_loss': tf.keras.metrics.Mean(),
             'val_class_loss': tf.keras.metrics.Mean(),
             'val_regression_loss': tf.keras.metrics.Mean(),
+            'val_score': tf.keras.metrics.Mean(),
         }
 
         if not args.test:
@@ -95,10 +100,10 @@ class RetinaTrainer:
 
 
     @tf.function
-    def train_on_batch(self, x, y):
+    def train_on_batch(self, x):
         with tf.GradientTape() as tp:
-            class_pred, bbox_pred = self.model(x)
-            class_g, bbox_g, c_mask, r_mask = y['class'], y['bbox'], y['class_mask'], y['regression_mask']
+            class_pred, bbox_pred = self.model(x['image'], training=True)
+            class_g, bbox_g, c_mask, r_mask = x['class'], x['bbox'], x['class_mask'], x['regression_mask']
             class_loss = tfa.losses.sigmoid_focal_crossentropy(class_g, class_pred, from_logits=True) 
             class_loss = utils.mask_reduce_sum_over_batch(class_loss, c_mask)
             regression_loss = self._huber_loss(bbox_g, bbox_pred)
@@ -110,9 +115,9 @@ class RetinaTrainer:
         return (loss, regression_loss, class_loss)
 
     @tf.function
-    def evaluate_on_batch(self, x, y):
-        class_pred, bbox_pred = self.model(x)
-        class_g, bbox_g, c_mask, r_mask = y['class'], y['bbox'], y['class_mask'], y['regression_mask']
+    def evaluate_on_batch(self, x):
+        class_pred, bbox_pred = self.model(x['image'], training=False)
+        class_g, bbox_g, c_mask, r_mask = x['class'], x['bbox'], x['class_mask'], x['regression_mask']
         class_loss = tfa.losses.sigmoid_focal_crossentropy(class_g, class_pred, from_logits=True) 
         class_loss = utils.mask_reduce_sum_over_batch(class_loss, c_mask)
         regression_loss = self._huber_loss(bbox_g, bbox_pred)
@@ -122,6 +127,30 @@ class RetinaTrainer:
         # TODO: compute mAP
         return (loss, regression_loss, class_loss)
 
+    #@tf.function TODO!!
+    def predict_on_batch(self, x, score_threshold = 0.05):
+        class_pred, bbox_pred = self.model(x['image'], training=False)
+        regression_pred = utils.bbox_from_fast_rcnn(self.anchors, bbox_pred) 
+        regression_pred = tf.expand_dims(regression_pred, 2)
+        boxes, scores, classes, valid = tf.image.combined_non_max_suppression(
+            regression_pred, class_pred, 3, 5, score_threshold=score_threshold,
+            iou_threshold=0.5, clip_boxes=False) 
+
+        # Clip bounding boxes
+        boxes = tf.clip_by_value(boxes, 0, self.args.image_size)
+        return boxes, scores, classes, valid
+
+    def predict(self, dataset = None):
+        predictions = []
+        if dataset is None: dataset = self.eval_dataset
+        dataset = dataset.batch(1).prefetch(4)
+
+        for x in dataset: 
+            for boxes, scores, classes, valid_detections in zip(*map(lambda x: x.numpy(), self.predict_on_batch(x))):
+                predictions.append((boxes[:valid_detections], classes[:valid_detections], scores[:valid_detections]))
+        return predictions
+
+
     def fit(self): 
         for epoch in range(self.args.epochs):
             self._epoch.assign(epoch)
@@ -130,19 +159,28 @@ class RetinaTrainer:
             for m in self.metrics.values(): m.reset_states()
 
             # Train on train dataset
-            for epoch_step, (x, y) in enumerate(self.dataset):
+            for epoch_step, x in enumerate(self.dataset):
                 self._epoch_step.assign(epoch_step)
-                loss, regression_loss, class_loss = self.train_on_batch(x, y)
+                loss, regression_loss, class_loss = self.train_on_batch(x)
                 self.metrics['loss'].update_state(loss)
                 self.metrics['regression_loss'].update_state(regression_loss)
                 self.metrics['class_loss'].update_state(class_loss)
 
             # Run validation
-            for x, y in self.val_dataset:
-                loss, regression_loss, class_loss = self.evaluate_on_batch(x, y)
+            for x in self.val_dataset:
+                loss, regression_loss, class_loss = self.evaluate_on_batch(x)
                 self.metrics['val_loss'].update_state(loss)
                 self.metrics['val_regression_loss'].update_state(regression_loss)
                 self.metrics['val_class_loss'].update_state(class_loss)
+
+            # Compute straka's metric
+            predictions = self.predict()
+            for (boxes, classes, scores), gold in zip(predictions, self.eval_dataset):
+                gold_classes, gold_boxes = gold['class'].numpy(), gold['bbox'].numpy()
+                gold_filter = np.where(gold_classes > 0)
+                gold_classes = gold_classes[gold_filter]
+                gold_boxes = gold_boxes[gold_filter, :]
+                self.metrics['val_score'].update_state(utils.correct_predictions(gold_boxes, gold_classes, classes, boxes))
 
             # Save model every 20 epochs
             if (epoch + 1) % 20 == 0:
@@ -161,7 +199,8 @@ class RetinaTrainer:
             # We will use wandb
             self._wandb.log(values, step=values['epoch'])
         console_metrics = ['epoch: {epoch}', 'loss: {loss:.4f}', 'val_loss: {val_loss:.4f}',
-                'val_class_loss: {val_class_loss:.4f}', 'val_reg_loss: {val_regression_loss:.4f}']
+                'val_class_loss: {val_class_loss:.4f}', 'val_reg_loss: {val_regression_loss:.4f}',
+                'val_score: {val_score:.4f}']
         print(', '.join(console_metrics).format(**values)) 
 
     def save(self, filename = 'model.h5'):
@@ -181,15 +220,15 @@ if __name__ == '__main__':
             first_feature_scale=smallest_stride, anchor_scale=float(smallest_stride),
             num_scales=args.num_scales, aspect_ratios=args.aspect_ratios)
 
-    train_dataset, dev_dataset, _ = create_data(args.batch_size, 
+    train_dataset, dev_dataset, eval_dataset = create_data(args.batch_size, 
             anchors, image_size = args.image_size,
-            test=args.test, evaluation=False)
+            test=args.test)
 
     # Prepare network and trainer
     anchors_per_level = args.num_scales * len(args.aspect_ratios)
     network = efficientdet.EfficientDet(num_classes, anchors_per_level,
             input_size = args.image_size, pyramid_levels = pyramid_levels) 
-    model = RetinaTrainer(network, train_dataset, dev_dataset, args)
+    model = RetinaTrainer(network, anchors, train_dataset, (dev_dataset, eval_dataset), args)
 
     # Start training
     print(f'running command: {argstr}') 

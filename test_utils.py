@@ -33,11 +33,3 @@ def test_recodex_training():
     np.testing.assert_almost_equal(computed_classes.numpy(), anchor_classes, decimal=3)
     #np.testing.assert_almost_equal(computed_bboxes, anchor_bboxes, decimal=3)
 
-
-def test_compute_tp_and_fp():
-    # TODO
-    threshold = 0.5
-    gold_bboxes = tf.convert_to_tensor([[0,0,50,50], [50,50,100,100]])
-    pred_bboxes = tf.convert_to_tensor([[0,0,50,50], [50,50,100,100]])
-    gold_classes = tf.convert_to_tensor([[0,0,50,50], [50,50,100,100]])
-    pred_bboxes = tf.convert_to_tensor([[0,0,50,50], [50,50,100,100]])

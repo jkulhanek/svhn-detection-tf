@@ -29,6 +29,37 @@ def bbox_iou(a, b):
     return area_intersection
 
 
+def np_bbox_area(a):
+    assert isinstance(a, np.ndarray) 
+    return np.maximum(0, a[...,2] - a[...,0]) * np.maximum(0, a[...,3] - a[...,1]) 
+
+
+def np_bbox_iou(a, b):
+    """ Compute IoU for two bboxes a, b.
+
+    Each bbox is parametrized as a four-tuple (top, left, bottom, right).
+    """
+    assert isinstance(a, np.ndarray)
+    assert isinstance(b, np.ndarray)
+
+    a = np.expand_dims(a, -2)
+    b = np.expand_dims(b, -3)
+    intersection = np.stack([
+        np.maximum(a[...,0], b[...,0]),
+        np.maximum(a[...,1], b[...,1]),
+        np.minimum(a[...,2], b[...,2]),
+        np.minimum(a[...,3], b[...,3]),
+    ], -1)
+    area_a = bbox_area(a)
+    area_b = bbox_area(b)
+    area_intersection = bbox_area(intersection)
+    area_union = area_a + area_b - area_intersection
+    filter_expr = area_intersection > 0
+    area_intersection[filter_expr] *= 1.0 / area_union[filter_expr]
+    return area_intersection
+
+
+
 def bbox_to_fast_rcnn(anchor, bbox):
     """ Convert `bbox` to a Fast-R-CNN-like representation relative to `anchor`.
 
@@ -63,7 +94,7 @@ def bbox_from_fast_rcnn(anchor, fast_rcnn):
     anchor_y_center = 0.5 * (anchor_height) + anchor[...,SVHN.TOP]
     anchor_x_center = 0.5 * (anchor_width) + anchor[...,SVHN.LEFT]
 
-    center_y, center_x, height, width = fast_rcnn
+    center_y, center_x, height, width = fast_rcnn[...,0], fast_rcnn[...,1],fast_rcnn[...,2],fast_rcnn[...,3]
     bbox_height = tf.exp(height) * anchor_height
     bbox_width = tf.exp(width) * anchor_width
     bbox_y_center = center_y * anchor_height + anchor_y_center
@@ -182,75 +213,20 @@ def mask_reduce_sum_over_batch(values, mask):
     return tf.reduce_sum(masked_values) / batch_size
 
 
-def compute_tp_fp_from_predictions(pred_bboxes, pred_classes, pred_confidences, gold_bboxes, gold_classes, threshold):
-    iou_table = bbox_iou(pred_bboxes, gold_bboxes) >= threshold
-    correct_class_mask = tf.expand_dims(pred_classes, 1) == tf.expand_dims(gold_classes, 2)
-    correct_iou_table = tf.logical_and(iou_table, correct_class_mask)
-    
-    predictions = tf.shape(pred_bboxes)[0]
-    correct_predictions = tf.one_hot(tf.argmax(correct_iou_table, 1), depth=predictions, axis=1)
+def correct_predictions(gold_classes, gold_bboxes, predicted_classes, predicted_bboxes, iou_threshold=0.5):
+    if len(gold_classes) != len(predicted_classes):
+        return False
 
-    incorrect_predictions = tf.logical_and(iou_table, tf.logical_not(correct_predictions))
-    incorrect_predictions = tf.reduce_max(incorrect_predictions, -1)
-    tp = tf.cast(tf.reduce_sum(correct_predictions), self.dtype)
-    fp = tf.cast(tf.reduce_sum(incorrect_predictions), self.dtype)
-    # compute scores from confidentes
-    return tp, fp, scores
-    
-
-
-class BinaryTruePositives(tf.keras.metrics.Metric): 
-    def __init__(self, name='mAP@{threshold}', threshold=0.5, **kwargs):
-        super(BinaryTruePositives, self).__init__(name=name.format(threshold = threshold), **kwargs)
-        self.true_positives = self.add_weight(name='tp', initializer='zeros')
-        self.false_positives = self.add_weight(name='fp', initializer='zeros')
-        self.scores = self.add_weight(name='scores', initializer='zeros')
-        self.num_annotations = self.add_weight(name='numnotations', initializer='zeros')
-        self.threshold = threshold
-
-    def update_state(self, pred_bboxes, pred_classes, gold_bboxes, gold_classes):
-        y_true = tf.cast(y_true, tf.bool)
-        y_pred = tf.cast(y_pred, tf.bool)
-
-        values = tf.logical_and(tf.equal(y_true, True), tf.equal(y_pred, True))
-        values = tf.cast(values, self.dtype)
-        if sample_weight is not None:
-          sample_weight = tf.cast(sample_weight, self.dtype)
-          sample_weight = tf.broadcast_weights(sample_weight, values)
-          values = tf.multiply(values, sample_weight)
-        self.true_positives.assign_add(tf.reduce_sum(values))
-
-
-
-        iou_table = bbox_iou(pred_bboxes, gold_bboxes) >= self.threshold
-        correct_class_mask = tf.expand_dims(pred_classes, 1) == tf.expand_dims(gold_classes, 2)
-        correct_iou_table = tf.logical_and(iou_table, correct_class_mask)
-        
-        predictions = tf.shape(pred_bboxes)[0]
-        correct_predictions = tf.one_hot(tf.argmax(correct_iou_table, 1), depth=predictions, axis=1)
-
-        incorrect_predictions = tf.logical_and(iou_table, tf.logical_not(correct_predictions))
-        incorrect_predictions = tf.reduce_max(incorrect_predictions, -1)
-        self.true_positives.assign_add(tf.cast(tf.reduce_sum(correct_predictions), self.dtype))
-        self.false_positives.assign_add(tf.cast(tf.reduce_sum(incorrect_predictions), self.dtype))
-        
-        
-        # sort by score
-        indices         = np.argsort(-scores)
-        false_positives = false_positives[indices]
-        true_positives  = true_positives[indices]
-
-        # compute false positives and true positives
-        false_positives = np.cumsum(false_positives)
-        true_positives  = np.cumsum(true_positives)
-
-        # compute recall and precision
-        recall    = true_positives / num_annotations
-        precision = true_positives / np.maximum(true_positives + false_positives, np.finfo(np.float64).eps)
-
-        # compute average precision
-        average_precision  = _compute_ap(recall, precision)
-        average_precisions[label] = average_precision, num_annotations
-
-    def result(self):
-        return self.true_positives
+    used = [False] * len(gold_classes)
+    for cls, bbox in zip(predicted_classes, predicted_bboxes):
+        best = None
+        for i in range(len(gold_classes)):
+            if used[i] or gold_classes[i] != cls:
+                continue
+            iou = np_bbox_iou(bbox, gold_bboxes[i])
+            if iou >= iou_threshold and (best is None or iou > best_iou):
+                best, best_iou = i, iou
+        if best is None:
+            return False
+        used[best] = True
+    return True
