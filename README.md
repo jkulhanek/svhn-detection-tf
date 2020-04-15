@@ -27,6 +27,8 @@ Try using more/less features from the efficientdet or even replace the efficient
 
 ### Experiment with different learning rate/wd/momentum/grad_clip
 
+### Compare with https://github.com/penny4860/retinanet-digit-detector
+
 ### Implement augmentation from efficientdet paper
 Augmentations should be the following (if I remember correctly): translation, rotation, scale, flipY. Bounding boxes should be transformed accordingly. The correct behaviour should be verified in jupiter with bounding boxes drawn over the picture
 
