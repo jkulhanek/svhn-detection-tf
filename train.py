@@ -111,7 +111,7 @@ class RetinaTrainer:
             regression_loss = utils.mask_reduce_sum_over_batch(regression_loss, r_mask)
             loss = class_loss + regression_loss
         grads = tp.gradient(loss, self.model.trainable_variables)
-        capped_grads = (tf.clip_by_value(grad, -self._grad_clip, self._grad_clip) for grad in grads)
+        capped_grads, gradient_norm = tf.clip_by_global_norm(grads, self._grad_clip)
         self.optimizer.apply_gradients(zip(capped_grads, self.model.trainable_variables))
         return (loss, regression_loss, class_loss)
 
