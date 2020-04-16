@@ -16,8 +16,9 @@ import os
 
 
 
-def parse_args(): 
-    argstr = ' '.join(sys.argv)
+def parse_args(argv = []): 
+    argv = list(argv) + sys.argv
+    argstr = ' '.join(argv)
     parser = argparse.ArgumentParser()
     parser.add_argument('--batch_size', default=128, type=int)
     parser.add_argument('--image_size', default=128, type=int)
@@ -31,7 +32,7 @@ def parse_args():
     parser.add_argument('--test', action='store_true')
     if 'JOB' in os.environ:
         parser.add_argument('--name', default=os.environ['JOB'])
-    elif '--test' in sys.argv:
+    elif '--test' in argv:
         parser.add_argument('--name', default='test_test')
     else:
         parser.add_argument('--name', required=True)

@@ -17,7 +17,8 @@ def generate_training_data(anchors, x):
     orig_classes = tf.cast(x['classes'], tf.int32)
     orig_bboxes = tf.cast(x['bboxes'], tf.float32)
     classes, bboxes, mask = utils.bboxes_training(anchors, orig_classes, orig_bboxes)
-    onehot_classes = tf.one_hot(classes, depth=SVHN.LABELS, dtype=tf.float32)
+    onehot_classes = tf.one_hot(classes - 1, depth=SVHN.LABELS, dtype=tf.float32)
+    onehot_classes = onehot_classes * tf.expand_dims(tf.cast(classes > 0, dtype=onehot_classes.dtype), -1)
     class_mask = mask
     regression_mask = tf.logical_and(class_mask, classes > 0)
     return { 'image':x['image'], 'bbox': bboxes, 'class': onehot_classes, 
