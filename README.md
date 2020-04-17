@@ -5,7 +5,7 @@ Object detection on SVHN dataset in tensorflow using efficientdet
 Please verify the validity of your changes before pushing by running `$ python train.py --test`.
 
 #### Sanity Checks
-The classification loss should start at ~6.0 and should get to at least ~0.2.
+The classification loss should start at ~6.0 and should get to at most ~0.1.
 The regression loss should start at ~0.3 and should get to ~0.07.
 One epoch should take ~1 minute.
 
