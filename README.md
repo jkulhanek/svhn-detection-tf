@@ -4,6 +4,11 @@ Object detection on SVHN dataset in tensorflow using efficientdet
 ## Getting Started
 Please verify the validity of your changes before pushing by running `$ python train.py --test`.
 
+#### Sanity Checks
+The classification loss should start at ~6.0 and should get to at least ~0.2.
+The regression loss should start at ~0.3 and should get to ~0.07.
+One epoch should take ~1 minute.
+
 ## Experiments
 TODO: add a table with results
 
@@ -18,6 +23,9 @@ COCO metric should validate the performance of the model during training and aft
 
 ### Implement augmentations from efficientdet paper
 Augmentations should be the following (if I remember correctly): translation, rotation, scale, flipY. Bounding boxes should be transformed accordingly. The correct behaviour should be verified in jupiter with bounding boxes drawn over the picture
+
+### Implement autoaugment
+Follow https://github.com/google/automl/blob/master/efficientdet/aug/autoaugment.py
 
 ### Experiment with different image_size
 Make sure, that the smallest conv layer in efficientdet has at least 4 pixels. Increase/decrease number of efficientdet layers if needed
