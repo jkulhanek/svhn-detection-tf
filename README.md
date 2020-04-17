@@ -42,6 +42,8 @@ Experiment with iouthreshold and scorethreshold to obtain maximal performance ou
 
 ### Evaluate on Straka's test set
 
+### Implement Stochastic Depth
+
 ### Finetune performance
 Computing metrics could be done in better way
 mAP could be implemented as a keras metric
