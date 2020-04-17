@@ -35,7 +35,7 @@ def create_data(batch_size, anchors, image_size, test=False):
     anchors = tf.cast(tf.convert_to_tensor(anchors), tf.float32)
     def create_dataset(x):
         if test:
-            x = dataset.train.take(8)
+            x = dataset.train.take(1)
         return x.map(SVHN.parse) \
                 .map(scale_input(image_size)) \
 

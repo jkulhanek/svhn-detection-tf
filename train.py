@@ -22,7 +22,7 @@ def parse_args(argv = []):
     parser = argparse.ArgumentParser()
     parser.add_argument('--batch_size', default=128, type=int)
     parser.add_argument('--image_size', default=128, type=int)
-    parser.add_argument('--pyramid_levels', default=3, type=int)
+    parser.add_argument('--pyramid_levels', default=4, type=int)
     parser.add_argument('--num_scales', default=1, type=int)
     parser.add_argument('--learning_rate', default=0.02, type=float, help='0.16 in efficientdet')
     parser.add_argument('--weight_decay', default=1e-6, type=float, help='4e-5 in efficientdet')
@@ -42,7 +42,7 @@ def parse_args(argv = []):
     assert '_' in args.name
     args.project, args.name = args.name[:args.name.index('_')], args.name[args.name.index('_') + 1:]
     if args.test:
-        args.batch_size = 2
+        args.batch_size = 1
 
     args.aspect_ratios = [(1.4, 0.7)]
     return args, argstr
