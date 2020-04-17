@@ -24,9 +24,9 @@ def parse_args(argv = []):
     parser.add_argument('--image_size', default=128, type=int)
     parser.add_argument('--pyramid_levels', default=4, type=int)
     parser.add_argument('--num_scales', default=1, type=int)
-    parser.add_argument('--learning_rate', default=0.02, type=float, help='0.16 in efficientdet')
-    parser.add_argument('--weight_decay', default=1e-6, type=float, help='4e-5 in efficientdet')
-    parser.add_argument('--momentum', default=0.09, type=float, help='0.9 in efficientdet')
+    parser.add_argument('--learning_rate', default=0.16, type=float, help='0.16 in efficientdet')
+    parser.add_argument('--weight_decay', default=4e-5, type=float, help='4e-5 in efficientdet')
+    parser.add_argument('--momentum', default=0.9, type=float, help='0.9 in efficientdet')
     parser.add_argument('--grad_clip', default=1.0, type=float, help='not used in efficientdet')
     parser.add_argument('--epochs', default=70, type=int)
     parser.add_argument('--test', action='store_true')
@@ -145,7 +145,7 @@ class RetinaTrainer:
     def predict(self, dataset = None):
         predictions = []
         if dataset is None: dataset = self.eval_dataset
-        dataset = dataset.batch(1).prefetch(4)
+        dataset = dataset.batch(self.args.batch_size).prefetch(4)
 
         for x in dataset: 
             for boxes, scores, classes, valid_detections in zip(*map(lambda x: x.numpy(), self.predict_on_batch(x))):
