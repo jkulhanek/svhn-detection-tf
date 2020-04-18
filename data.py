@@ -40,7 +40,7 @@ def augment_map(bboxes, img, args):
 
 def create_data(batch_size, anchors, image_size, test=False, augmentation='none'):
     assert test == False or batch_size <= 8 
-    assert augmentation in ['none','retina','retina-rotation']
+    assert augmentation in ['none','retina','retina-rotate']
     dataset = SVHN()
     anchors = tf.cast(tf.convert_to_tensor(anchors), tf.float32)
     def create_dataset(x):
