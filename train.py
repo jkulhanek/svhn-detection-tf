@@ -13,6 +13,7 @@ import utils
 from functools import partial
 from data import create_data
 import os
+from augment import augment
 
 
 
@@ -30,6 +31,13 @@ def parse_args(argv = []):
     parser.add_argument('--grad_clip', default=1.0, type=float, help='not used in efficientdet')
     parser.add_argument('--epochs', default=70, type=int)
     parser.add_argument('--test', action='store_true')
+    parser.add_argument('--disable_gpu', action='store_true')
+    parser.add_argument('--aug_zoom', default=0, type=float)
+    parser.add_argument('--aug_width_shift', default=0, type=float)
+    parser.add_argument('--aug_height_shift', default=0, type=float)
+    parser.add_argument('--aug_rotation', default=0, type=float)
+    parser.add_argument('--aug_vertical_fraction', default=1, type=float)
+    parser.add_argument('--aug_horizontal_fraction', default=1, type=float)
     if 'JOB' in os.environ:
         parser.add_argument('--name', default=os.environ['JOB'])
     elif '--test' in argv:
@@ -45,6 +53,10 @@ def parse_args(argv = []):
         args.batch_size = 1
 
     args.aspect_ratios = [(1.4, 0.7)]
+
+    if args.disable_gpu:
+        os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
+
     return args, argstr
 
 
@@ -100,6 +112,21 @@ class RetinaTrainer:
             wandb.config.update(args)
             self._wandb = wandb
 
+    def train_on_batch_augment(self, x):
+        new_imgs = []
+        new_bboxes = []
+        for img, bboxes in zip(x['image'], x['bbox']):
+            new_img, new_bbox = augment(img, bboxes,
+                                          width_shift=self.args.aug_width_shift, height_shift=self.args.aug_height_shift,
+                                          zoom=self.args.aug_zoom,
+                                          rotation=self.args.aug_rotation,
+                                          vertical_fraction=self.args.aug_vertical_fraction,
+                                          horizontal_fraction=self.args.aug_horizontal_fraction)
+            new_imgs.append(new_img)
+            new_bboxes.append(new_bbox)
+        x['image'] = tf.stack(new_imgs, axis=0)
+        x['bbox'] = tf.stack(new_bboxes, axis=0)
+        return self.train_on_batch(x)
 
     @tf.function
     def train_on_batch(self, x):
@@ -163,7 +190,7 @@ class RetinaTrainer:
             # Train on train dataset
             for epoch_step, x in enumerate(self.dataset):
                 self._epoch_step.assign(epoch_step)
-                loss, regression_loss, class_loss = self.train_on_batch(x)
+                loss, regression_loss, class_loss = self.train_on_batch_augment(x)
                 self.metrics['loss'].update_state(loss)
                 self.metrics['regression_loss'].update_state(regression_loss)
                 self.metrics['class_loss'].update_state(class_loss)
