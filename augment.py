@@ -1,5 +1,6 @@
 import tensorflow as tf
 from svhn_dataset import SVHN
+from functools import partial
 import numpy as np
 
 def augment_py(img, bbox, width_shift=0, height_shift=0, zoom=0, rotation=0, vertical_fraction = 1.0, horizontal_fraction=1.0):
@@ -83,7 +84,7 @@ def build_augment_map(use_rotations = True):
         shift = 0.2
         rotation = 15
         zoom = 0.2
-        return augment(img, bboxes, width_shift=shift, 
+        return augment_py(img, bboxes, width_shift=shift, 
                 height_shift=shift, zoom=zoom,
                 rotation=rotation if use_rotations else 0, vertical_fraction=0.6,
                 horizontal_fraction=0.8)
@@ -97,7 +98,7 @@ def build_augment(use_rotations = True):
     def augment(x):
         bboxes, image, classes = x['bboxes'], x['image'], x['classes']
         result = tf.py_function(
-            partial(augment_map, args=args),
+            augment_map,
             inp=[bboxes, image],
             Tout=[tf.int64, tf.int64]
         )
