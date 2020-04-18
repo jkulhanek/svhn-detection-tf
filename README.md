@@ -43,6 +43,7 @@ Experiment with iouthreshold and scorethreshold to obtain maximal performance ou
 ### Evaluate on Straka's test set
 
 ### Implement Stochastic Depth
+!!! stochastic depth is not implemented in the efficientdet paper!!!
 
 ### Finetune performance
 Computing metrics could be done in better way
