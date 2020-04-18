@@ -11,7 +11,7 @@ from svhn_dataset import SVHN
 import utils
 import utils
 from functools import partial
-from data import create_data
+from data import create_data, NUM_TRAINING_SAMPLES
 import os
 
 
@@ -52,28 +52,18 @@ def parse_args(argv = []):
 
 class RetinaTrainer:
     def __init__(self, model, anchors, dataset, val_dataset, args):
-        """
-        val_dataset is a tuple (dev, eval_dev), where the dev part is dataset with 
-        mapped gold boxes to anchors, whereas eval_dev is the raw dataset which has
-        to use batch size 1
-        """
-        assert isinstance(val_dataset, tuple)
-        assert len(val_dataset) == 2
         self.model = model
         self.anchors = anchors
         self.args = args
-        self.dataset = dataset \
-            .batch(args.batch_size) \
-            .prefetch(4)
+        self.dataset = dataset
 
-        self.val_dataset = val_dataset[0] \
-            .batch(args.batch_size) \
-            .prefetch(4)
+        self.eval_dataset = val_dataset
+        self.val_dataset = val_dataset
 
-        self.eval_dataset = val_dataset[1]
 
         # Prepare training
-        self._num_minibatches = self.dataset.reduce(0, lambda a,x: a + 1) # TOO SLOW
+        # self._num_minibatches = self.dataset.reduce(0, lambda a,x: a + 1) # TOO SLOW
+        self._num_minibatches = NUM_TRAINING_SAMPLES // args.batch_size
         self._huber_loss = tf.keras.losses.Huber(reduction = tf.losses.Reduction.NONE)
         self._epoch = tf.Variable(0, trainable=False, dtype=tf.int32)
         self._epoch_step = tf.Variable(0, trainable=False, dtype=tf.int32)
@@ -130,7 +120,7 @@ class RetinaTrainer:
         # TODO: compute mAP
         return (loss, regression_loss, class_loss)
 
-    #@tf.function TODO!!
+    @tf.function
     def predict_on_batch(self, x, score_threshold = 0.05):
         class_pred, bbox_pred = self.model(x['image'], training=False)
         regression_pred = utils.bbox_from_fast_rcnn(self.anchors, bbox_pred) 
@@ -145,7 +135,7 @@ class RetinaTrainer:
 
     def predict(self, dataset = None):
         predictions = []
-        if dataset is None: dataset = self.eval_dataset
+        if dataset is None: dataset = self.val_dataset
         dataset = dataset.batch(self.args.batch_size).prefetch(4)
 
         for x in dataset: 
@@ -155,6 +145,14 @@ class RetinaTrainer:
 
 
     def fit(self): 
+        dataset = self.dataset \
+            .batch(args.batch_size) \
+            .prefetch(4)
+
+        val_dataset = self.val_dataset \
+            .batch(args.batch_size) \
+            .prefetch(4)
+            
         for epoch in range(self.args.epochs):
             self._epoch.assign(epoch)
             
@@ -162,7 +160,7 @@ class RetinaTrainer:
             for m in self.metrics.values(): m.reset_states()
 
             # Train on train dataset
-            for epoch_step, x in enumerate(self.dataset):
+            for epoch_step, x in enumerate(dataset):
                 self._epoch_step.assign(epoch_step)
                 loss, regression_loss, class_loss = self.train_on_batch(x)
                 self.metrics['loss'].update_state(loss)
@@ -170,16 +168,16 @@ class RetinaTrainer:
                 self.metrics['class_loss'].update_state(class_loss)
 
             # Run validation
-            for x in self.val_dataset:
+            for x in val_dataset:
                 loss, regression_loss, class_loss = self.evaluate_on_batch(x)
                 self.metrics['val_loss'].update_state(loss)
                 self.metrics['val_regression_loss'].update_state(regression_loss)
                 self.metrics['val_class_loss'].update_state(class_loss)
 
             # Compute straka's metric
-            predictions = self.predict()
-            for (boxes, classes, scores), gold in zip(predictions, self.eval_dataset):
-                gold_classes, gold_boxes = gold['class'].numpy(), gold['bbox'].numpy()
+            predictions = self.predict(self.val_dataset)
+            for (boxes, classes, scores), gold in zip(predictions, self.val_dataset):
+                gold_classes, gold_boxes = gold['gt-class'].numpy(), gold['gt-bbox'].numpy()
                 gold_filter = np.where(gold_classes > 0)
                 gold_classes = gold_classes[gold_filter]
                 gold_boxes = gold_boxes[gold_filter, :]
@@ -223,7 +221,7 @@ if __name__ == '__main__':
             first_feature_scale=smallest_stride, anchor_scale=float(smallest_stride),
             num_scales=args.num_scales, aspect_ratios=args.aspect_ratios)
 
-    train_dataset, dev_dataset, eval_dataset = create_data(args.batch_size, 
+    train_dataset, dev_dataset, _ = create_data(args.batch_size, 
             anchors, image_size = args.image_size,
             test=args.test, augmentation=args.augmentation)
 
@@ -231,7 +229,7 @@ if __name__ == '__main__':
     anchors_per_level = args.num_scales * len(args.aspect_ratios)
     network = efficientdet.EfficientDet(num_classes, anchors_per_level,
             input_size = args.image_size, pyramid_levels = pyramid_levels) 
-    model = RetinaTrainer(network, anchors, train_dataset, (dev_dataset, eval_dataset), args)
+    model = RetinaTrainer(network, anchors, train_dataset, dev_dataset, args)
 
     # Start training
     print(f'running command: {argstr}') 

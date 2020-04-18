@@ -4,6 +4,9 @@ from svhn_dataset import SVHN
 import utils
 from augment import build_augment
 
+MAX_GOLD_BOXES = 5
+NUM_TRAINING_SAMPLES = 10000 # Cache this number
+
 def scale_input(image_size):
     def scale(x):
         x = dict(**x)
@@ -22,8 +25,15 @@ def generate_training_data(anchors, x):
     onehot_classes = onehot_classes * tf.expand_dims(tf.cast(classes > 0, dtype=onehot_classes.dtype), -1)
     class_mask = mask
     regression_mask = tf.logical_and(class_mask, classes > 0)
+
+    # Add original classes and bboxes
+    num_bboxes = tf.shape(orig_classes)[0]
+    orig_classes = tf.pad(orig_classes, tf.convert_to_tensor([[0, MAX_GOLD_BOXES - num_bboxes]], dtype=tf.int32))
+    orig_bboxes = tf.pad(orig_bboxes, tf.convert_to_tensor([[0, MAX_GOLD_BOXES - num_bboxes], [0,0]], dtype=tf.int32))
+
     return { 'image':x['image'], 'bbox': bboxes, 'class': onehot_classes, 
-            'class_mask': class_mask, 'regression_mask': regression_mask }
+            'class_mask': class_mask, 'regression_mask': regression_mask,
+            'gt-class': orig_classes, 'gt-bbox': orig_bboxes }
 
 def generate_evaluation_data(x):
     orig_classes = tf.cast(x['classes'], tf.int32)
