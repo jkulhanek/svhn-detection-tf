@@ -22,7 +22,7 @@ Verify that predictions are computed correctly (it returns a sane value) and the
 COCO metric should validate the performance of the model during training and after the training finished. The implementation could be based on https://github.com/google/automl/blob/master/efficientdet/coco_metric.py and could used the predict function (similar to straka metric). In the fit function, the predictions are already computed. The metric could use pycocotools.
 
 ### Implement augmentations from efficientdet paper
-Augmentations should be the following (if I remember correctly): translation, rotation, scale, flipY. Bounding boxes should be transformed accordingly. The correct behaviour should be verified in jupiter with bounding boxes drawn over the picture
+Augmentations should be the following (if I remember correctly): translation, scale. Bounding boxes should be transformed accordingly. The correct behaviour should be verified in jupiter with bounding boxes drawn over the picture
 
 ### Implement autoaugment
 Follow https://github.com/google/automl/blob/master/efficientdet/aug/autoaugment.py
