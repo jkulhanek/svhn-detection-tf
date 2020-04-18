@@ -33,7 +33,8 @@ def generate_training_data(anchors, x):
 
     return { 'image':x['image'], 'bbox': bboxes, 'class': onehot_classes, 
             'class_mask': class_mask, 'regression_mask': regression_mask,
-            'gt-class': orig_classes, 'gt-bbox': orig_bboxes }
+            'gt-class': orig_classes, 'gt-bbox': orig_bboxes,
+            'gt-length': num_bboxes }
 
 def generate_evaluation_data(x):
     orig_classes = tf.cast(x['classes'], tf.int32)
@@ -55,7 +56,7 @@ def create_data(batch_size, anchors, image_size, test=False, augmentation='none'
     anchors = tf.cast(tf.convert_to_tensor(anchors), tf.float32)
     def create_dataset(x):
         if test:
-            x = dataset.train.take(1)
+            x = dataset.train.take(8)
         return x.map(SVHN.parse) \
                 .map(scale_input(image_size)) \
 

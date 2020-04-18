@@ -44,7 +44,7 @@ def parse_args(argv = []):
     assert '_' in args.name
     args.project, args.name = args.name[:args.name.index('_')], args.name[args.name.index('_') + 1:]
     if args.test:
-        args.batch_size = 1
+        args.batch_size = 2
 
     args.aspect_ratios = [(1.4, 0.7)]
     return args, argstr
@@ -62,8 +62,7 @@ class RetinaTrainer:
 
 
         # Prepare training
-        # self._num_minibatches = self.dataset.reduce(0, lambda a,x: a + 1) # TOO SLOW
-        self._num_minibatches = NUM_TRAINING_SAMPLES // args.batch_size
+        self._num_minibatches = self.dataset.reduce(0, lambda a,x: a + 1)
         self._huber_loss = tf.keras.losses.Huber(reduction = tf.losses.Reduction.NONE)
         self._epoch = tf.Variable(0, trainable=False, dtype=tf.int32)
         self._epoch_step = tf.Variable(0, trainable=False, dtype=tf.int32)
@@ -178,6 +177,8 @@ class RetinaTrainer:
             predictions = self.predict(self.val_dataset)
             for (boxes, classes, scores), gold in zip(predictions, self.val_dataset):
                 gold_classes, gold_boxes = gold['gt-class'].numpy(), gold['gt-bbox'].numpy()
+                num_gt = gold['gt-length'].numpy()
+                gold_classes, gold_boxes = gold_classes[:num_gt], gold_boxes[:num_gt]
                 gold_filter = np.where(gold_classes > 0)
                 gold_classes = gold_classes[gold_filter]
                 gold_boxes = gold_boxes[gold_filter, :]
