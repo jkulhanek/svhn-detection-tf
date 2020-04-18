@@ -179,9 +179,6 @@ class RetinaTrainer:
                 gold_classes, gold_boxes = gold['gt-class'].numpy(), gold['gt-bbox'].numpy()
                 num_gt = gold['gt-length'].numpy()
                 gold_classes, gold_boxes = gold_classes[:num_gt], gold_boxes[:num_gt]
-                gold_filter = np.where(gold_classes > 0)
-                gold_classes = gold_classes[gold_filter]
-                gold_boxes = gold_boxes[gold_filter, :]
                 self.metrics['val_score'].update_state(utils.correct_predictions(gold_boxes, gold_classes, classes, boxes))
 
             # Save model every 20 epochs
