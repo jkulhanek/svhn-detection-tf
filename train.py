@@ -31,6 +31,7 @@ def parse_args(argv = []):
     parser.add_argument('--epochs', default=70, type=int)
     parser.add_argument('--test', action='store_true')
     parser.add_argument('--disable_gpu', action='store_true')
+    parser.add_argument('--augmentation', default='none', help='One of the following: none, retina, retina-rotate, autoaugment')
     parser.add_argument('--aug_zoom', default=0, type=float)
     parser.add_argument('--aug_width_shift', default=0, type=float)
     parser.add_argument('--aug_height_shift', default=0, type=float)
@@ -234,7 +235,7 @@ if __name__ == '__main__':
 
     train_dataset, dev_dataset, eval_dataset = create_data(args.batch_size, 
             anchors, image_size = args.image_size,
-            test=args.test, args=args)
+            test=args.test, augmentation=args.augmentation)
 
     # Prepare network and trainer
     anchors_per_level = args.num_scales * len(args.aspect_ratios)

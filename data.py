@@ -2,7 +2,7 @@ import tensorflow as tf
 from functools import partial
 from svhn_dataset import SVHN
 import utils
-from augment import augment
+from augment import build_augment
 
 def scale_input(image_size):
     def scale(x):
@@ -38,8 +38,9 @@ def augment_map(bboxes, img, args):
                                 vertical_fraction=args.aug_vertical_fraction,
                                 horizontal_fraction=args.aug_horizontal_fraction)
 
-def create_data(batch_size, anchors, image_size, test=False, args=None):
+def create_data(batch_size, anchors, image_size, test=False, augmentation='none'):
     assert test == False or batch_size <= 8 
+    assert augmentation in ['none','retina','retina-rotation']
     dataset = SVHN()
     anchors = tf.cast(tf.convert_to_tensor(anchors), tf.float32)
     def create_dataset(x):
@@ -51,21 +52,15 @@ def create_data(batch_size, anchors, image_size, test=False, args=None):
     train, dev, test = tuple(map(create_dataset, 
         (dataset.train, dataset.dev, dataset.test)))
 
-    def _pass(x):
-        bboxes, image, classes = x['bboxes'], x['image'], x['classes']
-        result = tf.py_function(
-            partial(augment_map, args=args),
-            inp=[bboxes, image],
-            Tout=[tf.int64, tf.int64]
-        )
-        return {
-            'bboxes': tf.cast(result[1], tf.float32),
-            'image': tf.cast(result[0], tf.float32),
-            'classes': classes
-        }
+    augment = lambda x: x
+    if augmentation == 'retina':
+        augment = build_augment(False)
+    elif augmentation == 'retina-rotate':
+        augment = build_augment(True)
+
 
     # Generate training data with matched gt boxes
-    train_dataset = train.map(_pass).map(partial(generate_training_data, anchors)).shuffle(3000)
+    train_dataset = train.map(augment).map(partial(generate_training_data, anchors)).shuffle(3000)
     dev_dataset = dev.map(partial(generate_training_data, anchors)).cache()
 
     # Generate evaluation data
