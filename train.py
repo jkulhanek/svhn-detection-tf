@@ -32,12 +32,6 @@ def parse_args(argv = []):
     parser.add_argument('--test', action='store_true')
     parser.add_argument('--disable_gpu', action='store_true')
     parser.add_argument('--augmentation', default='none', help='One of the following: none, retina, retina-rotate, autoaugment')
-    parser.add_argument('--aug_zoom', default=0, type=float)
-    parser.add_argument('--aug_width_shift', default=0, type=float)
-    parser.add_argument('--aug_height_shift', default=0, type=float)
-    parser.add_argument('--aug_rotation', default=0, type=float)
-    parser.add_argument('--aug_vertical_fraction', default=1, type=float)
-    parser.add_argument('--aug_horizontal_fraction', default=1, type=float)
     if 'JOB' in os.environ:
         parser.add_argument('--name', default=os.environ['JOB'])
     elif '--test' in argv:
@@ -53,10 +47,6 @@ def parse_args(argv = []):
         args.batch_size = 1
 
     args.aspect_ratios = [(1.4, 0.7)]
-
-    if args.disable_gpu:
-        os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
-
     return args, argstr
 
 
@@ -249,5 +239,5 @@ if __name__ == '__main__':
 
     # Save model
     model.save()
-    print('model saved')
+print('model saved')
 
