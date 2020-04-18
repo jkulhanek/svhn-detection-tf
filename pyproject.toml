@@ -17,7 +17,7 @@ tqdm = "*"
 [tool.poetry.dev-dependencies]
 autopep8 = "*"
 pylint = "*"
-jedi = "*"
+jedi = "~0.16.0"
 rope = "*"
 flake8 = "*"
 ipython = "*"
