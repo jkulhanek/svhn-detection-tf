@@ -13,7 +13,6 @@ import utils
 from functools import partial
 from data import create_data
 import os
-from augment import augment
 
 
 
@@ -112,22 +111,6 @@ class RetinaTrainer:
             wandb.config.update(args)
             self._wandb = wandb
 
-    def train_on_batch_augment(self, x):
-        new_imgs = []
-        new_bboxes = []
-        for img, bboxes in zip(x['image'], x['bbox']):
-            new_img, new_bbox = augment(img, bboxes,
-                                          width_shift=self.args.aug_width_shift, height_shift=self.args.aug_height_shift,
-                                          zoom=self.args.aug_zoom,
-                                          rotation=self.args.aug_rotation,
-                                          vertical_fraction=self.args.aug_vertical_fraction,
-                                          horizontal_fraction=self.args.aug_horizontal_fraction)
-            new_imgs.append(new_img)
-            new_bboxes.append(new_bbox)
-        x['image'] = tf.stack(new_imgs, axis=0)
-        x['bbox'] = tf.stack(new_bboxes, axis=0)
-        return self.train_on_batch(x)
-
     @tf.function
     def train_on_batch(self, x):
         with tf.GradientTape() as tp:
@@ -190,7 +173,7 @@ class RetinaTrainer:
             # Train on train dataset
             for epoch_step, x in enumerate(self.dataset):
                 self._epoch_step.assign(epoch_step)
-                loss, regression_loss, class_loss = self.train_on_batch_augment(x)
+                loss, regression_loss, class_loss = self.train_on_batch(x)
                 self.metrics['loss'].update_state(loss)
                 self.metrics['regression_loss'].update_state(regression_loss)
                 self.metrics['class_loss'].update_state(class_loss)
@@ -251,7 +234,7 @@ if __name__ == '__main__':
 
     train_dataset, dev_dataset, eval_dataset = create_data(args.batch_size, 
             anchors, image_size = args.image_size,
-            test=args.test)
+            test=args.test, args=args)
 
     # Prepare network and trainer
     anchors_per_level = args.num_scales * len(args.aspect_ratios)

@@ -2,6 +2,7 @@ import tensorflow as tf
 from functools import partial
 from svhn_dataset import SVHN
 import utils
+from augment import augment
 
 def scale_input(image_size):
     def scale(x):
@@ -27,9 +28,17 @@ def generate_training_data(anchors, x):
 def generate_evaluation_data(x):
     orig_classes = tf.cast(x['classes'], tf.int32)
     orig_bboxes = tf.cast(x['bboxes'], tf.float32)
-    return { 'image':x['image'], 'bbox': orig_bboxes, 'class': orig_classes } 
+    return { 'image':x['image'], 'bbox': orig_bboxes, 'class': orig_classes }
 
-def create_data(batch_size, anchors, image_size, test=False):
+def augment_map(bboxes, img, args):
+    return augment(img, bboxes,
+                                width_shift=args.aug_width_shift, height_shift=args.aug_height_shift,
+                                zoom=args.aug_zoom,
+                                rotation=args.aug_rotation,
+                                vertical_fraction=args.aug_vertical_fraction,
+                                horizontal_fraction=args.aug_horizontal_fraction)
+
+def create_data(batch_size, anchors, image_size, test=False, args=None):
     assert test == False or batch_size <= 8 
     dataset = SVHN()
     anchors = tf.cast(tf.convert_to_tensor(anchors), tf.float32)
@@ -42,9 +51,22 @@ def create_data(batch_size, anchors, image_size, test=False):
     train, dev, test = tuple(map(create_dataset, 
         (dataset.train, dataset.dev, dataset.test)))
 
+    def _pass(x):
+        bboxes, image, classes = x['bboxes'], x['image'], x['classes']
+        result = tf.py_function(
+            partial(augment_map, args=args),
+            inp=[bboxes, image],
+            Tout=[tf.int64, tf.int64]
+        )
+        return {
+            'bboxes': tf.cast(result[1], tf.float32),
+            'image': tf.cast(result[0], tf.float32),
+            'classes': classes
+        }
+
     # Generate training data with matched gt boxes
-    train_dataset = train.map(partial(generate_training_data, anchors)).cache().shuffle(3000)
-    dev_dataset = dev.map(partial(generate_training_data, anchors)).cache() 
+    train_dataset = train.map(_pass).map(partial(generate_training_data, anchors)).shuffle(3000)
+    dev_dataset = dev.map(partial(generate_training_data, anchors)).cache()
 
     # Generate evaluation data
     eval_dataset = dev.map(generate_evaluation_data).cache() 
