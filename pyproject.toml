@@ -6,9 +6,9 @@ authors = ["Jonáš Kulhánek <jonas.kulhanek@live.com>", "Patrik Valkovic <patr
 license = "MIT"
 
 [tool.poetry.dependencies]
-python = "^3.8"
-tensorflow = "2.2.0rc3"
-tensorflow-addons = { git = "https://github.com/tensorflow/addons.git", tag = "r0.9" }
+python = "~3.7" # "^3.8"
+tensorflow = "~2.1.0" # "2.2.0rc3"
+tensorflow-addons = "~0.9.1 "# { git = "https://github.com/tensorflow/addons.git", tag = "r0.9" }
 numpy = "*"
 pandas = "*"
 matplotlib = "*"
