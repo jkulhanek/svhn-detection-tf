@@ -9,10 +9,12 @@ license = "MIT"
 python = "~3.7" # "^3.8"
 tensorflow = "~2.1.0" # "2.2.0rc3"
 tensorflow-addons = "~0.9.1 "# { git = "https://github.com/tensorflow/addons.git", tag = "r0.9" }
+tensorflow-estimator = "~2.1.0"
 numpy = "*"
 pandas = "*"
 matplotlib = "*"
 tqdm = "*"
+wandb = "^0.8.32"
 
 [tool.poetry.dev-dependencies]
 autopep8 = "*"
