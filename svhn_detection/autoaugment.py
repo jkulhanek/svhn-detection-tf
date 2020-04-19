@@ -23,6 +23,7 @@
 import inspect
 import logging
 import math
+from functools import partial
 
 import tensorflow as tf
 from tensorflow_addons import image as image_ops
@@ -416,12 +417,12 @@ def random_shift_bbox(image, bbox, pixel_scaling, replace,
         """Applies mask to bbox region in image then adds content_tensor to it."""
         mask = tf.pad(tensor=mask,
                       paddings=[[min_y_, (image_height - 1) - max_y_],
-                       [min_x_, (image_width - 1) - max_x_],
-                       [0, 0]], constant_values=1)
+                                [min_x_, (image_width - 1) - max_x_],
+                                [0, 0]], constant_values=1)
         content_tensor = tf.pad(tensor=content_tensor,
                                 paddings=[[min_y_, (image_height - 1) - max_y_],
-                                 [min_x_, (image_width - 1) - max_x_],
-                                 [0, 0]], constant_values=0)
+                                          [min_x_, (image_width - 1) - max_x_],
+                                          [0, 0]], constant_values=0)
         return image_ * mask + content_tensor
 
     # Zero out original bbox location.
@@ -546,16 +547,16 @@ def _apply_bbox_augmentation(image, bbox, augmentation_func, *args):
     # image.
     augmented_bbox_content = tf.pad(tensor=augmented_bbox_content,
                                     paddings=[[min_y, (image_height - 1) - max_y],
-                                     [min_x, (image_width - 1) - max_x],
-                                     [0, 0]])
+                                              [min_x, (image_width - 1) - max_x],
+                                              [0, 0]])
 
     # Create a mask that will be used to zero out a part of the original image.
     mask_tensor = tf.zeros_like(bbox_content)
 
     mask_tensor = tf.pad(tensor=mask_tensor,
                          paddings=[[min_y, (image_height - 1) - max_y],
-                          [min_x, (image_width - 1) - max_x],
-                          [0, 0]],
+                                   [min_x, (image_width - 1) - max_x],
+                                   [0, 0]],
                          constant_values=1)
     # Replace the old bbox content with the new augmented content.
     image = image * mask_tensor + augmented_bbox_content
@@ -1353,6 +1354,22 @@ def bbox_cutout(image, bboxes, pad_fraction, replace_with_mean):
     return image, bboxes
 
 
+def _translate_x_bbox(image, bboxes, pixels, replace):
+    return translate_bbox(image, bboxes, pixels, replace, True)
+
+
+def _translate_y_bbox(image, bboxes, pixels, replace):
+    return translate_bbox(image, bboxes, pixels, replace, False)
+
+
+def _shear_x_bbox(image, bboxes, level, replace):
+    return shear_with_bboxes(image, bboxes, level, replace, True)
+
+
+def _shear_y_bbox(image, bboxes, level, replace):
+    return shear_with_bboxes(image, bboxes, level, replace, False)
+
+
 NAME_TO_FUNC = {
     'AutoContrast': autocontrast,
     'Equalize': equalize,
@@ -1366,16 +1383,10 @@ NAME_TO_FUNC = {
     'Cutout': cutout,
     'BBox_Cutout': bbox_cutout,
     'Rotate_BBox': rotate_with_bboxes,
-    # pylint:disable=g-long-lambda
-    'TranslateX_BBox': lambda image, bboxes, pixels, replace: translate_bbox(
-        image, bboxes, pixels, replace, shift_horizontal=True),
-    'TranslateY_BBox': lambda image, bboxes, pixels, replace: translate_bbox(
-        image, bboxes, pixels, replace, shift_horizontal=False),
-    'ShearX_BBox': lambda image, bboxes, level, replace: shear_with_bboxes(
-        image, bboxes, level, replace, shear_horizontal=True),
-    'ShearY_BBox': lambda image, bboxes, level, replace: shear_with_bboxes(
-        image, bboxes, level, replace, shear_horizontal=False),
-    # pylint:enable=g-long-lambda
+    'TranslateX_BBox': _translate_x_bbox,
+    'TranslateY_BBox': _translate_y_bbox,
+    'ShearX_BBox': _shear_x_bbox,
+    'ShearY_BBox': _shear_y_bbox,
     'Rotate_Only_BBoxes': rotate_only_bboxes,
     'ShearX_Only_BBoxes': shear_x_only_bboxes,
     'ShearY_Only_BBoxes': shear_y_only_bboxes,
@@ -1434,45 +1445,61 @@ def _bbox_cutout_level_to_arg(level, hparams):
             hparams.cutout_bbox_replace_with_mean)
 
 
+def _empty_level_to_arg(level):
+    return ()
+
+
+def _posterize_level_to_arg(level):
+    return (int((level/_MAX_LEVEL) * 4),)
+
+
+def _solarize_level_to_arg(level):
+    return (int((level/_MAX_LEVEL) * 256),)
+
+
+def _solarize_add_level_to_arg(level):
+    return (int((level/_MAX_LEVEL) * 110),)
+
+
+def _cutout_level_to_arg(level, hparams):
+    return (int((level/_MAX_LEVEL) * hparams.cutout_const),)
+
+
+def _solarize_only_bboxes_level_to_arg(level):
+    return (int((level/_MAX_LEVEL) * 256),)
+
+
+def _cutout_only_bboxes_level_to_arg(level, hparams):
+    return (int((level/_MAX_LEVEL) * hparams.cutout_bbox_const),)
+
+
 def level_to_arg(hparams):
     return {
-        'AutoContrast': lambda level: (),
-        'Equalize': lambda level: (),
-        'Posterize': lambda level: (int((level/_MAX_LEVEL) * 4),),
-        'Solarize': lambda level: (int((level/_MAX_LEVEL) * 256),),
-        'SolarizeAdd': lambda level: (int((level/_MAX_LEVEL) * 110),),
+        'AutoContrast': _empty_level_to_arg,
+        'Equalize': _empty_level_to_arg,
+        'Posterize': _posterize_level_to_arg,
+        'Solarize': _solarize_level_to_arg,
+        'SolarizeAdd': _solarize_add_level_to_arg,
         'Color': _enhance_level_to_arg,
         'Contrast': _enhance_level_to_arg,
         'Brightness': _enhance_level_to_arg,
         'Sharpness': _enhance_level_to_arg,
-        'Cutout': lambda level: (int((level/_MAX_LEVEL) * hparams.cutout_const),),
-        # pylint:disable=g-long-lambda
-        'BBox_Cutout': lambda level: _bbox_cutout_level_to_arg(
-            level, hparams),
-        'TranslateX_BBox': lambda level: _translate_level_to_arg(
-            level, hparams.translate_const),
-        'TranslateY_BBox': lambda level: _translate_level_to_arg(
-            level, hparams.translate_const),
-        # pylint:enable=g-long-lambda
+        'Cutout': partial(_cutout_level_to_arg, hparams=hparams),
+        'BBox_Cutout': partial(_bbox_cutout_level_to_arg, hparams=hparams),
+        'TranslateX_BBox': partial(_translate_level_to_arg, translate_const=hparams.translate_const),
+        'TranslateY_BBox': partial(_translate_level_to_arg, translate_const=hparams.translate_const),
         'ShearX_BBox': _shear_level_to_arg,
         'ShearY_BBox': _shear_level_to_arg,
         'Rotate_BBox': _rotate_level_to_arg,
         'Rotate_Only_BBoxes': _rotate_level_to_arg,
         'ShearX_Only_BBoxes': _shear_level_to_arg,
         'ShearY_Only_BBoxes': _shear_level_to_arg,
-        # pylint:disable=g-long-lambda
-        'TranslateX_Only_BBoxes': lambda level: _translate_level_to_arg(
-            level, hparams.translate_bbox_const),
-        'TranslateY_Only_BBoxes': lambda level: _translate_level_to_arg(
-            level, hparams.translate_bbox_const),
-        # pylint:enable=g-long-lambda
-        'Flip_Only_BBoxes': lambda level: (),
-        'Solarize_Only_BBoxes': lambda level: (int((level/_MAX_LEVEL) * 256),),
-        'Equalize_Only_BBoxes': lambda level: (),
-        # pylint:disable=g-long-lambda
-        'Cutout_Only_BBoxes': lambda level: (
-            int((level/_MAX_LEVEL) * hparams.cutout_bbox_const),),
-        # pylint:enable=g-long-lambda
+        'TranslateX_Only_BBoxes': partial(_translate_level_to_arg, translate_const=hparams.translate_bbox_const),
+        'TranslateY_Only_BBoxes': partial(_translate_level_to_arg, translate_const=hparams.translate_bbox_const),
+        'Flip_Only_BBoxes': _empty_level_to_arg,
+        'Solarize_Only_BBoxes': _solarize_only_bboxes_level_to_arg,
+        'Equalize_Only_BBoxes': _empty_level_to_arg,
+        'Cutout_Only_BBoxes': partial(_cutout_only_bboxes_level_to_arg, hparams=hparams)
     }
 
 
@@ -1541,8 +1568,7 @@ def select_and_apply_random_policy(policies, image, bboxes):
     return (image, bboxes)
 
 
-def build_and_apply_nas_policy(policies, image, bboxes,
-                               augmentation_hparams):
+def build_nas_policy(policies, augmentation_hparams):
     """Build a policy from the given policies passed in and apply to image.
 
     Args:
@@ -1589,13 +1615,10 @@ def build_and_apply_nas_policy(policies, image, bboxes,
             return final_policy
         tf_policies.append(make_final_policy(tf_policy))
 
-    augmented_images, augmented_bboxes = select_and_apply_random_policy(
-        tf_policies, image, bboxes)
-    # If no bounding boxes were specified, then just return the images.
-    return (augmented_images, augmented_bboxes)
+    return lambda image, bboxes: select_and_apply_random_policy(tf_policies, image, bboxes)
 
 
-def distort_image_with_autoaugment(image, bboxes, args):
+def distort_image_with_autoaugment(args):
     """Applies the AutoAugment policy to `image` and `bboxes`.
 
     Args:
@@ -1636,7 +1659,7 @@ def distort_image_with_autoaugment(image, bboxes, args):
     #     cutout_bbox_const=50,
     #     translate_bbox_const=120))
 
-    return build_and_apply_nas_policy(policy, image, bboxes, args)
+    return build_nas_policy(policy, args)
 
 
 def autoaugment_image(example, args):
@@ -1673,7 +1696,7 @@ def autoaugment_image(example, args):
     bboxes, norm = tf.linalg.normalize(bboxes, axis=1)
 
     # Run augmentation
-    image, bboxes = distort_image_with_autoaugment(image, bboxes, args)
+    image, bboxes = distort_image_with_autoaugment(args)(image, bboxes)
 
     # Denormalize bboxes
     bboxes *= norm
