@@ -17,8 +17,8 @@ import os
 
 
 def parse_args(argv = []): 
-    argv = list(argv) + sys.argv
-    argstr = ' '.join(argv)
+    all_argv = list(argv) + sys.argv
+    argstr = ' '.join(all_argv)
     parser = argparse.ArgumentParser()
     parser.add_argument('--batch_size', default=128, type=int)
     parser.add_argument('--image_size', default=128, type=int)
@@ -34,13 +34,14 @@ def parse_args(argv = []):
     parser.add_argument('--augmentation', default='none', help='One of the following: none, retina, retina-rotate, autoaugment')
     if 'JOB' in os.environ:
         parser.add_argument('--name', default=os.environ['JOB'])
-    elif '--test' in argv:
+    elif '--test' in all_argv:
         parser.add_argument('--name', default='test_test')
     else:
         parser.add_argument('--name', required=True)
 
-    args = parser.parse_args()
-    args.nowandb = False
+    if argv is not None: args = parser.parse_args(argv)
+    else: args = parser.parse_args()
+
     assert '_' in args.name
     args.project, args.name = args.name[:args.name.index('_')], args.name[args.name.index('_') + 1:]
     if args.test:
@@ -84,14 +85,15 @@ class RetinaTrainer:
             'val_score': tf.keras.metrics.Mean(),
         }
 
-        if not args.test:
+    def _start_wandb(self): 
+        if not self.args.test:
             # Use wandb
             import wandb
             wandb.init(entity='kulhanek', 
                     anonymous='allow',
-                    project=args.project,
-                    name=args.name)
-            wandb.config.update(args)
+                    project=self.args.project,
+                    name=self.args.name)
+            wandb.config.update(self.args)
             self._wandb = wandb
 
     @tf.function
@@ -127,6 +129,7 @@ class RetinaTrainer:
         class_pred, bbox_pred = self.model(x['image'], training=False)
         regression_pred = utils.bbox_from_fast_rcnn(self.anchors, bbox_pred) 
         regression_pred = tf.expand_dims(regression_pred, 2)
+        class_pred = tf.nn.sigmoid(class_pred)
         boxes, scores, classes, valid = tf.image.combined_non_max_suppression(
             regression_pred, class_pred, 3, 5, score_threshold=score_threshold,
             iou_threshold=0.5, clip_boxes=False) 
@@ -147,6 +150,7 @@ class RetinaTrainer:
 
 
     def fit(self): 
+        self._start_wandb()
         dataset = self.dataset \
             .batch(args.batch_size) \
             .prefetch(4)
@@ -191,6 +195,28 @@ class RetinaTrainer:
 
             # Log current values
             self.log()
+
+    def evaluate(self, dataset = None):
+        if dataset is None: dataset = self.val_dataset
+        dataset = dataset \
+            .batch(self.args.batch_size) \
+            .prefetch(4)
+
+        # Reset metrics
+        for m in self.metrics.values(): m.reset_states()
+
+        # Run validation
+        for x in dataset:
+            loss, regression_loss, class_loss = self.evaluate_on_batch(x)
+            self.metrics['val_loss'].update_state(loss)
+            self.metrics['val_regression_loss'].update_state(regression_loss)
+            self.metrics['val_class_loss'].update_state(class_loss)
+        return dict(
+            loss = self.metrics.get('val_loss').result().numpy(),
+            regression_loss = self.metrics.get('val_regression_loss').result().numpy(),
+            class_loss = self.metrics.get('val_class_loss').result().numpy(),
+        )
+
 
     def log(self):
         values = {k: v.result().numpy() for k, v in self.metrics.items()}
@@ -238,5 +264,5 @@ if __name__ == '__main__':
 
     # Save model
     model.save()
-print('model saved')
+    print('model saved')
 
