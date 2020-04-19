@@ -87,7 +87,10 @@ class RetinaTrainer:
         if not args.test:
             # Use wandb
             import wandb
-            wandb.init(project=args.project, name=args.name)
+            wandb.init(entity='kulhanek', 
+                    anonymous='allow',
+                    project=args.project,
+                    name=args.name)
             wandb.config.update(args)
             self._wandb = wandb
 
