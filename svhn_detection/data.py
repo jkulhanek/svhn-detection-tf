@@ -73,7 +73,5 @@ def create_data(batch_size, anchors, image_size, test=False, augmentation='none'
     # Generate training data with matched gt boxes
     train_dataset = train.map(augment).map(partial(generate_training_data, anchors))
     dev_dataset = dev.map(partial(generate_training_data, anchors)).cache()
-
-    # Generate evaluation data
-    eval_dataset = dev.map(generate_evaluation_data).cache() 
-    return (train_dataset, dev_dataset, eval_dataset)
+    test_dataset = test.map(partial(generate_training_data, anchors)).cache()
+    return (train_dataset, dev_dataset, test_dataset)
