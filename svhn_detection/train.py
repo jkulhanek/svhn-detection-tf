@@ -23,7 +23,7 @@ def parse_args(argv = []):
     parser.add_argument('--batch_size', default=128, type=int)
     parser.add_argument('--image_size', default=128, type=int)
     parser.add_argument('--pyramid_levels', default=4, type=int)
-    parser.add_argument('--num_scales', default=1, type=int)
+    parser.add_argument('--num_scales', default=3, type=int)
     parser.add_argument('--learning_rate', default=0.16, type=float, help='0.16 in efficientdet')
     parser.add_argument('--weight_decay', default=4e-5, type=float, help='4e-5 in efficientdet')
     parser.add_argument('--momentum', default=0.9, type=float, help='0.9 in efficientdet')
@@ -47,7 +47,7 @@ def parse_args(argv = []):
     if args.test:
         args.batch_size = 2
 
-    args.aspect_ratios = [(1.4, 0.7)]
+    args.aspect_ratios = [(1.4, 0.7), (1.0, 1.0)]
     return args, argstr
 
 
