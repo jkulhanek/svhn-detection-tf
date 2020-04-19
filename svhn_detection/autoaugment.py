@@ -24,7 +24,7 @@ import inspect
 import logging
 import math
 
-import tensorflow.compat.v1 as tf
+import tensorflow as tf
 from tensorflow_addons import image as image_ops
 
 # This signifies the max integer that the controller RNN could predict for the
@@ -169,18 +169,18 @@ def blend(image1, image2, factor):
       A blended image Tensor of type uint8.
     """
     if factor == 0.0:
-        return tf.convert_to_tensor(image1)
+        return tf.convert_to_tensor(value=image1)
     if factor == 1.0:
-        return tf.convert_to_tensor(image2)
+        return tf.convert_to_tensor(value=image2)
 
-    image1 = tf.to_float(image1)
-    image2 = tf.to_float(image2)
+    image1 = tf.cast(image1, dtype=tf.float32)
+    image2 = tf.cast(image2, dtype=tf.float32)
 
     difference = image2 - image1
     scaled = factor * difference
 
     # Do addition in float.
-    temp = tf.to_float(image1) + scaled
+    temp = tf.cast(image1, dtype=tf.float32) + scaled
 
     # Interpolate
     if factor > 0.0 and factor < 1.0:
@@ -212,15 +212,15 @@ def cutout(image, pad_size, replace=0):
     Returns:
       An image Tensor that is of type uint8.
     """
-    image_height = tf.shape(image)[0]
-    image_width = tf.shape(image)[1]
+    image_height = tf.shape(input=image)[0]
+    image_width = tf.shape(input=image)[1]
 
     # Sample the center location in the image where the zero mask will be applied.
-    cutout_center_height = tf.random_uniform(
+    cutout_center_height = tf.random.uniform(
         shape=[], minval=0, maxval=image_height,
         dtype=tf.int32)
 
-    cutout_center_width = tf.random_uniform(
+    cutout_center_width = tf.random.uniform(
         shape=[], minval=0, maxval=image_width,
         dtype=tf.int32)
 
@@ -233,11 +233,11 @@ def cutout(image, pad_size, replace=0):
                     image_width - (left_pad + right_pad)]
     padding_dims = [[lower_pad, upper_pad], [left_pad, right_pad]]
     mask = tf.pad(
-        tf.zeros(cutout_shape, dtype=image.dtype),
-        padding_dims, constant_values=1)
+        tensor=tf.zeros(cutout_shape, dtype=image.dtype),
+        paddings=padding_dims, constant_values=1)
     mask = tf.expand_dims(mask, -1)
     mask = tf.tile(mask, [1, 1, 3])
-    image = tf.where(
+    image = tf.compat.v1.where(
         tf.equal(mask, 0),
         tf.ones_like(image, dtype=image.dtype) * replace,
         image)
@@ -248,7 +248,7 @@ def solarize(image, threshold=128):
     # For each pixel in the image, select the pixel
     # if the value is less than the threshold.
     # Otherwise, subtract 255 from the pixel.
-    return tf.where(image < threshold, image, 255 - image)
+    return tf.compat.v1.where(image < threshold, image, 255 - image)
 
 
 def solarize_add(image, addition=0, threshold=128):
@@ -258,7 +258,7 @@ def solarize_add(image, addition=0, threshold=128):
     # of 'addition' is between -128 and 128.
     added_image = tf.cast(image, tf.int64) + addition
     added_image = tf.cast(tf.clip_by_value(added_image, 0, 255), tf.uint8)
-    return tf.where(image < threshold, added_image, image)
+    return tf.compat.v1.where(image < threshold, added_image, image)
 
 
 def color(image, factor):
@@ -277,7 +277,7 @@ def contrast(image, factor):
     # and create a constant image size of that value.  Use that as the
     # blending degenerate target of the original image.
     hist = tf.histogram_fixed_width(degenerate, [0, 255], nbins=256)
-    mean = tf.reduce_sum(tf.cast(hist, tf.float32)) / 256.0
+    mean = tf.reduce_sum(input_tensor=tf.cast(hist, tf.float32)) / 256.0
     degenerate = tf.ones_like(degenerate, dtype=tf.float32) * mean
     degenerate = tf.clip_by_value(degenerate, 0.0, 255.0)
     degenerate = tf.image.grayscale_to_rgb(tf.cast(degenerate, tf.uint8))
@@ -345,41 +345,41 @@ def random_shift_bbox(image, bbox, pixel_scaling, replace,
       the new bbox that contains the new coordinates.
     """
     # Obtains image height and width and create helper clip functions.
-    image_height = tf.to_float(tf.shape(image)[0])
-    image_width = tf.to_float(tf.shape(image)[1])
+    image_height = tf.cast(tf.shape(input=image)[0], dtype=tf.float32)
+    image_width = tf.cast(tf.shape(input=image)[1], dtype=tf.float32)
 
     def clip_y(val):
-        return tf.clip_by_value(val, 0, tf.to_int32(image_height) - 1)
+        return tf.clip_by_value(val, 0, tf.cast(image_height, dtype=tf.int32) - 1)
 
     def clip_x(val):
-        return tf.clip_by_value(val, 0, tf.to_int32(image_width) - 1)
+        return tf.clip_by_value(val, 0, tf.cast(image_width, dtype=tf.int32) - 1)
 
     # Convert bbox to pixel coordinates.
-    min_y = tf.to_int32(image_height * bbox[0])
-    min_x = tf.to_int32(image_width * bbox[1])
-    max_y = clip_y(tf.to_int32(image_height * bbox[2]))
-    max_x = clip_x(tf.to_int32(image_width * bbox[3]))
+    min_y = tf.cast(image_height * bbox[0], dtype=tf.int32)
+    min_x = tf.cast(image_width * bbox[1], dtype=tf.int32)
+    max_y = clip_y(tf.cast(image_height * bbox[2], dtype=tf.int32))
+    max_x = clip_x(tf.cast(image_width * bbox[3], dtype=tf.int32))
     bbox_height, bbox_width = (max_y - min_y + 1, max_x - min_x + 1)
-    image_height = tf.to_int32(image_height)
-    image_width = tf.to_int32(image_width)
+    image_height = tf.cast(image_height, dtype=tf.int32)
+    image_width = tf.cast(image_width, dtype=tf.int32)
 
     # Select the new min/max bbox ranges that are used for sampling the
     # new min x/y coordinates of the shifted bbox.
     minval_y = clip_y(
-        min_y - tf.to_int32(pixel_scaling * tf.to_float(bbox_height) / 2.0))
+        min_y - tf.cast(pixel_scaling * tf.cast(bbox_height, dtype=tf.float32) / 2.0, dtype=tf.int32))
     maxval_y = clip_y(
-        min_y + tf.to_int32(pixel_scaling * tf.to_float(bbox_height) / 2.0))
+        min_y + tf.cast(pixel_scaling * tf.cast(bbox_height, dtype=tf.float32) / 2.0, dtype=tf.int32))
     minval_x = clip_x(
-        min_x - tf.to_int32(pixel_scaling * tf.to_float(bbox_width) / 2.0))
+        min_x - tf.cast(pixel_scaling * tf.cast(bbox_width, dtype=tf.float32) / 2.0, dtype=tf.int32))
     maxval_x = clip_x(
-        min_x + tf.to_int32(pixel_scaling * tf.to_float(bbox_width) / 2.0))
+        min_x + tf.cast(pixel_scaling * tf.cast(bbox_width, dtype=tf.float32) / 2.0, dtype=tf.int32))
 
     # Sample and calculate the new unclipped min/max coordinates of the new bbox.
     if new_min_bbox_coords is None:
-        unclipped_new_min_y = tf.random_uniform(
+        unclipped_new_min_y = tf.random.uniform(
             shape=[], minval=minval_y, maxval=maxval_y,
             dtype=tf.int32)
-        unclipped_new_min_x = tf.random_uniform(
+        unclipped_new_min_x = tf.random.uniform(
             shape=[], minval=minval_x, maxval=maxval_x,
             dtype=tf.int32)
     else:
@@ -401,10 +401,10 @@ def random_shift_bbox(image, bbox, pixel_scaling, replace,
 
     # Create the new bbox tensor by converting pixel integer values to floats.
     new_bbox = tf.stack([
-        tf.to_float(new_min_y) / tf.to_float(image_height),
-        tf.to_float(new_min_x) / tf.to_float(image_width),
-        tf.to_float(new_max_y) / tf.to_float(image_height),
-        tf.to_float(new_max_x) / tf.to_float(image_width)])
+        tf.cast(new_min_y, dtype=tf.float32) / tf.cast(image_height, dtype=tf.float32),
+        tf.cast(new_min_x, dtype=tf.float32) / tf.cast(image_width, dtype=tf.float32),
+        tf.cast(new_max_y, dtype=tf.float32) / tf.cast(image_height, dtype=tf.float32),
+        tf.cast(new_max_x, dtype=tf.float32) / tf.cast(image_width, dtype=tf.float32)])
 
     # Copy the contents in the bbox and fill the old bbox location
     # with gray (128).
@@ -414,12 +414,12 @@ def random_shift_bbox(image, bbox, pixel_scaling, replace,
     def mask_and_add_image(
             min_y_, min_x_, max_y_, max_x_, mask, content_tensor, image_):
         """Applies mask to bbox region in image then adds content_tensor to it."""
-        mask = tf.pad(mask,
-                      [[min_y_, (image_height - 1) - max_y_],
+        mask = tf.pad(tensor=mask,
+                      paddings=[[min_y_, (image_height - 1) - max_y_],
                        [min_x_, (image_width - 1) - max_x_],
                        [0, 0]], constant_values=1)
-        content_tensor = tf.pad(content_tensor,
-                                [[min_y_, (image_height - 1) - max_y_],
+        content_tensor = tf.pad(tensor=content_tensor,
+                                paddings=[[min_y_, (image_height - 1) - max_y_],
                                  [min_x_, (image_width - 1) - max_x_],
                                  [0, 0]], constant_values=0)
         return image_ * mask + content_tensor
@@ -481,12 +481,12 @@ def _check_bbox_area(min_y, min_x, max_y, max_x, delta=0.05):
         max_coord = tf.maximum(max_coord, 0.0 + delta)
         min_coord = tf.minimum(min_coord, 1.0 - delta)
         return min_coord, max_coord
-    min_y, max_y = tf.cond(tf.equal(height, 0.0),
-                           lambda: _adjust_bbox_boundaries(min_y, max_y),
-                           lambda: (min_y, max_y))
-    min_x, max_x = tf.cond(tf.equal(width, 0.0),
-                           lambda: _adjust_bbox_boundaries(min_x, max_x),
-                           lambda: (min_x, max_x))
+    min_y, max_y = tf.cond(pred=tf.equal(height, 0.0),
+                           true_fn=lambda: _adjust_bbox_boundaries(min_y, max_y),
+                           false_fn=lambda: (min_y, max_y))
+    min_x, max_x = tf.cond(pred=tf.equal(width, 0.0),
+                           true_fn=lambda: _adjust_bbox_boundaries(min_x, max_x),
+                           false_fn=lambda: (min_x, max_x))
     return min_y, min_x, max_y, max_x
 
 
@@ -523,14 +523,14 @@ def _apply_bbox_augmentation(image, bbox, augmentation_func, *args):
       A modified version of image, where the bbox location in the image will
       have `ugmentation_func applied to it.
     """
-    image_height = tf.to_float(tf.shape(image)[0])
-    image_width = tf.to_float(tf.shape(image)[1])
-    min_y = tf.to_int32(image_height * bbox[0])
-    min_x = tf.to_int32(image_width * bbox[1])
-    max_y = tf.to_int32(image_height * bbox[2])
-    max_x = tf.to_int32(image_width * bbox[3])
-    image_height = tf.to_int32(image_height)
-    image_width = tf.to_int32(image_width)
+    image_height = tf.cast(tf.shape(input=image)[0], dtype=tf.float32)
+    image_width = tf.cast(tf.shape(input=image)[1], dtype=tf.float32)
+    min_y = tf.cast(image_height * bbox[0], dtype=tf.int32)
+    min_x = tf.cast(image_width * bbox[1], dtype=tf.int32)
+    max_y = tf.cast(image_height * bbox[2], dtype=tf.int32)
+    max_x = tf.cast(image_width * bbox[3], dtype=tf.int32)
+    image_height = tf.cast(image_height, dtype=tf.int32)
+    image_width = tf.cast(image_width, dtype=tf.int32)
 
     # Clip to be sure the max values do not fall out of range.
     max_y = tf.minimum(max_y, image_height - 1)
@@ -544,16 +544,16 @@ def _apply_bbox_augmentation(image, bbox, augmentation_func, *args):
 
     # Pad the augmented_bbox_content and the mask to match the shape of original
     # image.
-    augmented_bbox_content = tf.pad(augmented_bbox_content,
-                                    [[min_y, (image_height - 1) - max_y],
+    augmented_bbox_content = tf.pad(tensor=augmented_bbox_content,
+                                    paddings=[[min_y, (image_height - 1) - max_y],
                                      [min_x, (image_width - 1) - max_x],
                                      [0, 0]])
 
     # Create a mask that will be used to zero out a part of the original image.
     mask_tensor = tf.zeros_like(bbox_content)
 
-    mask_tensor = tf.pad(mask_tensor,
-                         [[min_y, (image_height - 1) - max_y],
+    mask_tensor = tf.pad(tensor=mask_tensor,
+                         paddings=[[min_y, (image_height - 1) - max_y],
                           [min_x, (image_width - 1) - max_x],
                           [0, 0]],
                          constant_values=1)
@@ -567,12 +567,12 @@ def _concat_bbox(bbox, bboxes):
 
     # Note if all elements in bboxes are -1 (_INVALID_BOX), then this means
     # we discard bboxes and start the bboxes Tensor with the current bbox.
-    bboxes_sum_check = tf.reduce_sum(bboxes)
+    bboxes_sum_check = tf.reduce_sum(input_tensor=bboxes)
     bbox = tf.expand_dims(bbox, 0)
     # This check will be true when it is an _INVALID_BOX
-    bboxes = tf.cond(tf.equal(bboxes_sum_check, -4.0),
-                     lambda: bbox,
-                     lambda: tf.concat([bboxes, bbox], 0))
+    bboxes = tf.cond(pred=tf.equal(bboxes_sum_check, -4.0),
+                     true_fn=lambda: bbox,
+                     false_fn=lambda: tf.concat([bboxes, bbox], 0))
     return bboxes
 
 
@@ -606,17 +606,17 @@ def _apply_bbox_augmentation_wrapper(image, bbox, new_bboxes, prob,
       applying augmentation_func.
     """
     should_apply_op = tf.cast(
-        tf.floor(tf.random_uniform([], dtype=tf.float32) + prob), tf.bool)
+        tf.floor(tf.random.uniform([], dtype=tf.float32) + prob), tf.bool)
     if func_changes_bbox:
         augmented_image, bbox = tf.cond(
-            should_apply_op,
-            lambda: augmentation_func(image, bbox, *args),
-            lambda: (image, bbox))
+            pred=should_apply_op,
+            true_fn=lambda: augmentation_func(image, bbox, *args),
+            false_fn=lambda: (image, bbox))
     else:
         augmented_image = tf.cond(
-            should_apply_op,
-            lambda: _apply_bbox_augmentation(image, bbox, augmentation_func, *args),
-            lambda: image)
+            pred=should_apply_op,
+            true_fn=lambda: _apply_bbox_augmentation(image, bbox, augmentation_func, *args),
+            false_fn=lambda: image)
     new_bboxes = _concat_bbox(bbox, new_bboxes)
     return augmented_image, new_bboxes
 
@@ -652,9 +652,9 @@ def _apply_multi_bbox_augmentation(image, bboxes, prob, aug_func,
 
     # If the bboxes are empty, then just give it _INVALID_BOX. The result
     # will be thrown away.
-    bboxes = tf.cond(tf.equal(tf.size(bboxes), 0),
-                     lambda: tf.constant(_INVALID_BOX),
-                     lambda: bboxes)
+    bboxes = tf.cond(pred=tf.equal(tf.size(input=bboxes), 0),
+                     true_fn=lambda: tf.constant(_INVALID_BOX),
+                     false_fn=lambda: bboxes)
 
     bboxes = tf.ensure_shape(bboxes, (None, 4))
 
@@ -666,7 +666,7 @@ def _apply_multi_bbox_augmentation(image, bboxes, prob, aug_func,
     # pylint:enable=line-too-long
 
     # Setup the while_loop.
-    num_bboxes = tf.shape(bboxes)[0]  # We loop until we go over all bboxes.
+    num_bboxes = tf.shape(input=bboxes)[0]  # We loop until we go over all bboxes.
     idx = tf.constant(0)  # Counter for the while loop.
 
     # Conditional function when to end the loop once we go over all bboxes
@@ -690,7 +690,7 @@ def _apply_multi_bbox_augmentation(image, bboxes, prob, aug_func,
     # pylint:enable=g-long-lambda
 
     _, (image, new_bboxes) = tf.while_loop(
-        cond, body, [idx, (image, new_bboxes)],
+        cond=cond, body=body, loop_vars=[idx, (image, new_bboxes)],
         shape_invariants=[idx.get_shape(),
                           (image.get_shape(), tf.TensorShape([None, 4]))])
 
@@ -706,12 +706,12 @@ def _apply_multi_bbox_augmentation(image, bboxes, prob, aug_func,
 def _apply_multi_bbox_augmentation_wrapper(image, bboxes, prob, aug_func,
                                            func_changes_bbox, *args):
     """Checks to be sure num bboxes > 0 before calling inner function."""
-    num_bboxes = tf.shape(bboxes)[0]
+    num_bboxes = tf.shape(input=bboxes)[0]
     image, bboxes = tf.cond(
-        tf.equal(num_bboxes, 0),
-        lambda: (image, bboxes),
+        pred=tf.equal(num_bboxes, 0),
+        true_fn=lambda: (image, bboxes),
         # pylint:disable=g-long-lambda
-        lambda: _apply_multi_bbox_augmentation(
+        false_fn=lambda: _apply_multi_bbox_augmentation(
             image, bboxes, prob, aug_func, func_changes_bbox, *args))
     # pylint:enable=g-long-lambda
     return image, bboxes
@@ -805,7 +805,7 @@ def _rotate_bbox(bbox, image_height, image_width, degrees):
       A tensor of the same shape as bbox, but now with the rotated coordinates.
     """
     image_height, image_width = (
-        tf.to_float(image_height), tf.to_float(image_width))
+        tf.cast(image_height, dtype=tf.float32), tf.cast(image_width, dtype=tf.float32))
 
     # Convert from degrees to radians.
     degrees_to_radians = math.pi / 180.0
@@ -816,10 +816,10 @@ def _rotate_bbox(bbox, image_height, image_width, degrees):
     # Y coordinates are made negative as the y axis of images goes down with
     # increasing pixel values, so we negate to make sure x axis and y axis points
     # are in the traditionally positive direction.
-    min_y = -tf.to_int32(image_height * (bbox[0] - 0.5))
-    min_x = tf.to_int32(image_width * (bbox[1] - 0.5))
-    max_y = -tf.to_int32(image_height * (bbox[2] - 0.5))
-    max_x = tf.to_int32(image_width * (bbox[3] - 0.5))
+    min_y = -tf.cast(image_height * (bbox[0] - 0.5), dtype=tf.int32)
+    min_x = tf.cast(image_width * (bbox[1] - 0.5), dtype=tf.int32)
+    max_y = -tf.cast(image_height * (bbox[2] - 0.5), dtype=tf.int32)
+    max_x = tf.cast(image_width * (bbox[3] - 0.5), dtype=tf.int32)
     coordinates = tf.stack(
         [[min_y, min_x], [min_y, max_x], [max_y, min_x], [max_y, max_x]])
     coordinates = tf.cast(coordinates, tf.float32)
@@ -829,12 +829,12 @@ def _rotate_bbox(bbox, image_height, image_width, degrees):
         [[tf.cos(radians), tf.sin(radians)],
          [-tf.sin(radians), tf.cos(radians)]])
     new_coords = tf.cast(
-        tf.matmul(rotation_matrix, tf.transpose(coordinates)), tf.int32)
+        tf.matmul(rotation_matrix, tf.transpose(a=coordinates)), tf.int32)
     # Find min/max values and convert them back to normalized 0-1 floats.
-    min_y = -(tf.to_float(tf.reduce_max(new_coords[0, :])) / image_height - 0.5)
-    min_x = tf.to_float(tf.reduce_min(new_coords[1, :])) / image_width + 0.5
-    max_y = -(tf.to_float(tf.reduce_min(new_coords[0, :])) / image_height - 0.5)
-    max_x = tf.to_float(tf.reduce_max(new_coords[1, :])) / image_width + 0.5
+    min_y = -(tf.cast(tf.reduce_max(input_tensor=new_coords[0, :]), dtype=tf.float32) / image_height - 0.5)
+    min_x = tf.cast(tf.reduce_min(input_tensor=new_coords[1, :]), dtype=tf.float32) / image_width + 0.5
+    max_y = -(tf.cast(tf.reduce_min(input_tensor=new_coords[0, :]), dtype=tf.float32) / image_height - 0.5)
+    max_x = tf.cast(tf.reduce_max(input_tensor=new_coords[1, :]), dtype=tf.float32) / image_width + 0.5
 
     # Clip the bboxes to be sure the fall between [0, 1].
     min_y, min_x, max_y, max_x = _clip_bbox(min_y, min_x, max_y, max_x)
@@ -863,8 +863,8 @@ def rotate_with_bboxes(image, bboxes, degrees, replace):
     image = rotate(image, degrees, replace)
 
     # Convert bbox coordinates to pixel values.
-    image_height = tf.shape(image)[0]
-    image_width = tf.shape(image)[1]
+    image_height = tf.shape(input=image)[0]
+    image_width = tf.shape(input=image)[1]
     # pylint:disable=g-long-lambda
     def wrapped_rotate_bbox(bbox): return _rotate_bbox(
         bbox, image_height, image_width, degrees)
@@ -900,12 +900,12 @@ def _shift_bbox(bbox, image_height, image_width, pixels, shift_horizontal):
     Returns:
       A tensor of the same shape as bbox, but now with the shifted coordinates.
     """
-    pixels = tf.to_int32(pixels)
+    pixels = tf.cast(pixels, dtype=tf.int32)
     # Convert bbox to integer pixel locations.
-    min_y = tf.to_int32(tf.to_float(image_height) * bbox[0])
-    min_x = tf.to_int32(tf.to_float(image_width) * bbox[1])
-    max_y = tf.to_int32(tf.to_float(image_height) * bbox[2])
-    max_x = tf.to_int32(tf.to_float(image_width) * bbox[3])
+    min_y = tf.cast(tf.cast(image_height, dtype=tf.float32) * bbox[0], dtype=tf.int32)
+    min_x = tf.cast(tf.cast(image_width, dtype=tf.float32) * bbox[1], dtype=tf.int32)
+    max_y = tf.cast(tf.cast(image_height, dtype=tf.float32) * bbox[2], dtype=tf.int32)
+    max_x = tf.cast(tf.cast(image_width, dtype=tf.float32) * bbox[3], dtype=tf.int32)
 
     if shift_horizontal:
         min_x = tf.maximum(0, min_x - pixels)
@@ -915,10 +915,10 @@ def _shift_bbox(bbox, image_height, image_width, pixels, shift_horizontal):
         max_y = tf.minimum(image_height, max_y - pixels)
 
     # Convert bbox back to floats.
-    min_y = tf.to_float(min_y) / tf.to_float(image_height)
-    min_x = tf.to_float(min_x) / tf.to_float(image_width)
-    max_y = tf.to_float(max_y) / tf.to_float(image_height)
-    max_x = tf.to_float(max_x) / tf.to_float(image_width)
+    min_y = tf.cast(min_y, dtype=tf.float32) / tf.cast(image_height, dtype=tf.float32)
+    min_x = tf.cast(min_x, dtype=tf.float32) / tf.cast(image_width, dtype=tf.float32)
+    max_y = tf.cast(max_y, dtype=tf.float32) / tf.cast(image_height, dtype=tf.float32)
+    max_x = tf.cast(max_x, dtype=tf.float32) / tf.cast(image_width, dtype=tf.float32)
 
     # Clip the bboxes to be sure the fall between [0, 1].
     min_y, min_x, max_y, max_x = _clip_bbox(min_y, min_x, max_y, max_x)
@@ -950,8 +950,8 @@ def translate_bbox(image, bboxes, pixels, replace, shift_horizontal):
         image = translate_y(image, pixels, replace)
 
     # Convert bbox coordinates to pixel values.
-    image_height = tf.shape(image)[0]
-    image_width = tf.shape(image)[1]
+    image_height = tf.shape(input=image)[0]
+    image_width = tf.shape(input=image)[1]
     # pylint:disable=g-long-lambda
     def wrapped_shift_bbox(bbox): return _shift_bbox(
         bbox, image_height, image_width, pixels, shift_horizontal)
@@ -998,13 +998,13 @@ def _shear_bbox(bbox, image_height, image_width, level, shear_horizontal):
       A tensor of the same shape as bbox, but now with the shifted coordinates.
     """
     image_height, image_width = (
-        tf.to_float(image_height), tf.to_float(image_width))
+        tf.cast(image_height, dtype=tf.float32), tf.cast(image_width, dtype=tf.float32))
 
     # Change bbox coordinates to be pixels.
-    min_y = tf.to_int32(image_height * bbox[0])
-    min_x = tf.to_int32(image_width * bbox[1])
-    max_y = tf.to_int32(image_height * bbox[2])
-    max_x = tf.to_int32(image_width * bbox[3])
+    min_y = tf.cast(image_height * bbox[0], dtype=tf.int32)
+    min_x = tf.cast(image_width * bbox[1], dtype=tf.int32)
+    max_y = tf.cast(image_height * bbox[2], dtype=tf.int32)
+    max_x = tf.cast(image_width * bbox[3], dtype=tf.int32)
     coordinates = tf.stack(
         [[min_y, min_x], [min_y, max_x], [max_y, min_x], [max_y, max_x]])
     coordinates = tf.cast(coordinates, tf.float32)
@@ -1018,13 +1018,13 @@ def _shear_bbox(bbox, image_height, image_width, level, shear_horizontal):
             [[1, -level], [0, 1]])
     translation_matrix = tf.cast(translation_matrix, tf.float32)
     new_coords = tf.cast(
-        tf.matmul(translation_matrix, tf.transpose(coordinates)), tf.int32)
+        tf.matmul(translation_matrix, tf.transpose(a=coordinates)), tf.int32)
 
     # Find min/max values and convert them back to floats.
-    min_y = tf.to_float(tf.reduce_min(new_coords[0, :])) / image_height
-    min_x = tf.to_float(tf.reduce_min(new_coords[1, :])) / image_width
-    max_y = tf.to_float(tf.reduce_max(new_coords[0, :])) / image_height
-    max_x = tf.to_float(tf.reduce_max(new_coords[1, :])) / image_width
+    min_y = tf.cast(tf.reduce_min(input_tensor=new_coords[0, :]), dtype=tf.float32) / image_height
+    min_x = tf.cast(tf.reduce_min(input_tensor=new_coords[1, :]), dtype=tf.float32) / image_width
+    max_y = tf.cast(tf.reduce_max(input_tensor=new_coords[0, :]), dtype=tf.float32) / image_height
+    max_x = tf.cast(tf.reduce_max(input_tensor=new_coords[1, :]), dtype=tf.float32) / image_width
 
     # Clip the bboxes to be sure the fall between [0, 1].
     min_y, min_x, max_y, max_x = _clip_bbox(min_y, min_x, max_y, max_x)
@@ -1057,8 +1057,8 @@ def shear_with_bboxes(image, bboxes, level, replace, shear_horizontal):
         image = shear_y(image, level, replace)
 
     # Convert bbox coordinates to pixel values.
-    image_height = tf.shape(image)[0]
-    image_width = tf.shape(image)[1]
+    image_height = tf.shape(input=image)[0]
+    image_width = tf.shape(input=image)[1]
     # pylint:disable=g-long-lambda
     def wrapped_shear_bbox(bbox): return _shear_bbox(
         bbox, image_height, image_width, level, shear_horizontal)
@@ -1083,18 +1083,18 @@ def autocontrast(image):
         # A possibly cheaper version can be done using cumsum/unique_with_counts
         # over the histogram values, rather than iterating over the entire image.
         # to compute mins and maxes.
-        lo = tf.to_float(tf.reduce_min(image))
-        hi = tf.to_float(tf.reduce_max(image))
+        lo = tf.cast(tf.reduce_min(input_tensor=image), dtype=tf.float32)
+        hi = tf.cast(tf.reduce_max(input_tensor=image), dtype=tf.float32)
 
         # Scale the image, making the lowest value 0 and the highest value 255.
         def scale_values(im):
             scale = 255.0 / (hi - lo)
             offset = -lo * scale
-            im = tf.to_float(im) * scale + offset
+            im = tf.cast(im, dtype=tf.float32) * scale + offset
             im = tf.clip_by_value(im, 0.0, 255.0)
             return tf.cast(im, tf.uint8)
 
-        result = tf.cond(hi > lo, lambda: scale_values(image), lambda: image)
+        result = tf.cond(pred=hi > lo, true_fn=lambda: scale_values(image), false_fn=lambda: image)
         return result
 
     # Assumes RGB for now.  Scales each channel independently
@@ -1120,16 +1120,16 @@ def sharpness(image, factor):
     kernel = tf.tile(kernel, [1, 1, 3, 1])
     strides = [1, 1, 1, 1]
     degenerate = tf.nn.depthwise_conv2d(
-        image, kernel, strides, padding='VALID', rate=[1, 1])
+        input=image, filter=kernel, strides=strides, padding='VALID', dilations=[1, 1])
     degenerate = tf.clip_by_value(degenerate, 0.0, 255.0)
     degenerate = tf.squeeze(tf.cast(degenerate, tf.uint8), [0])
 
     # For the borders of the resulting image, fill in the values of the
     # original image.
     mask = tf.ones_like(degenerate)
-    padded_mask = tf.pad(mask, [[1, 1], [1, 1], [0, 0]])
-    padded_degenerate = tf.pad(degenerate, [[1, 1], [1, 1], [0, 0]])
-    result = tf.where(tf.equal(padded_mask, 1), padded_degenerate, orig_image)
+    padded_mask = tf.pad(tensor=mask, paddings=[[1, 1], [1, 1], [0, 0]])
+    padded_degenerate = tf.pad(tensor=degenerate, paddings=[[1, 1], [1, 1], [0, 0]])
+    result = tf.compat.v1.where(tf.equal(padded_mask, 1), padded_degenerate, orig_image)
 
     # Blend the final result.
     return blend(result, orig_image, factor)
@@ -1144,9 +1144,9 @@ def equalize(image):
         histo = tf.histogram_fixed_width(im, [0, 255], nbins=256)
 
         # For the purposes of computing the step, filter out the nonzeros.
-        nonzero = tf.where(tf.not_equal(histo, 0))
+        nonzero = tf.compat.v1.where(tf.not_equal(histo, 0))
         nonzero_histo = tf.reshape(tf.gather(histo, nonzero), [-1])
-        step = (tf.reduce_sum(nonzero_histo) - nonzero_histo[-1]) // 255
+        step = (tf.reduce_sum(input_tensor=nonzero_histo) - nonzero_histo[-1]) // 255
 
         def build_lut(histo, step):
             # Compute the cumulative sum, shifting by step // 2
@@ -1160,9 +1160,9 @@ def equalize(image):
 
         # If step is zero, return the original image.  Otherwise, build
         # lut from the full histogram and step and then index from it.
-        result = tf.cond(tf.equal(step, 0),
-                         lambda: im,
-                         lambda: tf.gather(build_lut(histo, step), im))
+        result = tf.cond(pred=tf.equal(step, 0),
+                         true_fn=lambda: im,
+                         false_fn=lambda: tf.gather(build_lut(histo, step), im))
 
         return tf.cast(result, tf.uint8)
 
@@ -1177,7 +1177,7 @@ def equalize(image):
 
 def wrap(image):
     """Returns 'image' with an extra channel set to all 1s."""
-    shape = tf.shape(image)
+    shape = tf.shape(input=image)
     extended_channel = tf.ones([shape[0], shape[1], 1], image.dtype)
     extended = tf.concat([image, extended_channel], 2)
     return extended
@@ -1201,7 +1201,7 @@ def unwrap(image, replace):
     Returns:
       image: A 3D image Tensor with 3 channels.
     """
-    image_shape = tf.shape(image)
+    image_shape = tf.shape(input=image)
     # Flatten the spatial dimensions.
     flattened_image = tf.reshape(image, [-1, image_shape[2]])
 
@@ -1211,7 +1211,7 @@ def unwrap(image, replace):
     replace = tf.concat([replace, tf.ones([1], image.dtype)], 0)
 
     # Where they are zero, fill them in with 'replace'.
-    flattened_image = tf.where(
+    flattened_image = tf.compat.v1.where(
         tf.equal(alpha_channel, 0),
         tf.ones_like(flattened_image, dtype=image.dtype) * replace,
         flattened_image)
@@ -1243,34 +1243,34 @@ def _cutout_inside_bbox(image, bbox, pad_fraction):
       will have cutout applied. The second element is the mean of the pixels
       in the image where the bbox is located.
     """
-    image_height = tf.shape(image)[0]
-    image_width = tf.shape(image)[1]
+    image_height = tf.shape(input=image)[0]
+    image_width = tf.shape(input=image)[1]
     # Transform from shape [1, 4] to [4].
     bbox = tf.squeeze(bbox)
 
-    min_y = tf.to_int32(tf.to_float(image_height) * bbox[0])
-    min_x = tf.to_int32(tf.to_float(image_width) * bbox[1])
-    max_y = tf.to_int32(tf.to_float(image_height) * bbox[2])
-    max_x = tf.to_int32(tf.to_float(image_width) * bbox[3])
+    min_y = tf.cast(tf.cast(image_height, dtype=tf.float32) * bbox[0], dtype=tf.int32)
+    min_x = tf.cast(tf.cast(image_width, dtype=tf.float32) * bbox[1], dtype=tf.int32)
+    max_y = tf.cast(tf.cast(image_height, dtype=tf.float32) * bbox[2], dtype=tf.int32)
+    max_x = tf.cast(tf.cast(image_width, dtype=tf.float32) * bbox[3], dtype=tf.int32)
 
     # Calculate the mean pixel values in the bounding box, which will be used
     # to fill the cutout region.
-    mean = tf.reduce_mean(image[min_y:max_y + 1, min_x:max_x + 1],
-                          reduction_indices=[0, 1])
+    mean = tf.reduce_mean(input_tensor=image[min_y:max_y + 1, min_x:max_x + 1],
+                          axis=[0, 1])
 
     # Cutout mask will be size pad_size_heigh * 2 by pad_size_width * 2 if the
     # region lies entirely within the bbox.
     box_height = max_y - min_y + 1
     box_width = max_x - min_x + 1
-    pad_size_height = tf.to_int32(pad_fraction * (box_height / 2))
-    pad_size_width = tf.to_int32(pad_fraction * (box_width / 2))
+    pad_size_height = tf.cast(pad_fraction * (box_height / 2), dtype=tf.int32)
+    pad_size_width = tf.cast(pad_fraction * (box_width / 2), dtype=tf.int32)
 
     # Sample the center location in the image where the zero mask will be applied.
-    cutout_center_height = tf.random_uniform(
+    cutout_center_height = tf.random.uniform(
         shape=[], minval=min_y, maxval=max_y+1,
         dtype=tf.int32)
 
-    cutout_center_width = tf.random_uniform(
+    cutout_center_width = tf.random.uniform(
         shape=[], minval=min_x, maxval=max_x+1,
         dtype=tf.int32)
 
@@ -1288,8 +1288,8 @@ def _cutout_inside_bbox(image, bbox, pad_fraction):
     padding_dims = [[lower_pad, upper_pad], [left_pad, right_pad]]
 
     mask = tf.pad(
-        tf.zeros(cutout_shape, dtype=image.dtype),
-        padding_dims, constant_values=1)
+        tensor=tf.zeros(cutout_shape, dtype=image.dtype),
+        paddings=padding_dims, constant_values=1)
 
     mask = tf.expand_dims(mask, 2)
     mask = tf.tile(mask, [1, 1, 3])
@@ -1327,8 +1327,8 @@ def bbox_cutout(image, bboxes, pad_fraction, replace_with_mean):
     def apply_bbox_cutout(image, bboxes, pad_fraction):
         """Applies cutout to a single bounding box within image."""
         # Choose a single bounding box to apply cutout to.
-        random_index = tf.random_uniform(
-            shape=[], maxval=tf.shape(bboxes)[0], dtype=tf.int32)
+        random_index = tf.random.uniform(
+            shape=[], maxval=tf.shape(input=bboxes)[0], dtype=tf.int32)
         # Select the corresponding bbox and apply cutout.
         chosen_bbox = tf.gather(bboxes, random_index)
         mask, mean = _cutout_inside_bbox(image, chosen_bbox, pad_fraction)
@@ -1339,7 +1339,7 @@ def bbox_cutout(image, bboxes, pad_fraction, replace_with_mean):
 
         # Apply the cutout mask to the image. Where the mask is 0 we fill it with
         # `replace`.
-        image = tf.where(
+        image = tf.compat.v1.where(
             tf.equal(mask, 0),
             tf.cast(tf.ones_like(image, dtype=image.dtype) * replace,
                     dtype=image.dtype),
@@ -1347,8 +1347,8 @@ def bbox_cutout(image, bboxes, pad_fraction, replace_with_mean):
         return image
 
     # Check to see if there are boxes, if so then apply boxcutout.
-    image = tf.cond(tf.equal(tf.size(bboxes), 0), lambda: image,
-                    lambda: apply_bbox_cutout(image, bboxes, pad_fraction))
+    image = tf.cond(pred=tf.equal(tf.size(input=bboxes), 0), true_fn=lambda: image,
+                    false_fn=lambda: apply_bbox_cutout(image, bboxes, pad_fraction))
 
     return image, bboxes
 
@@ -1390,8 +1390,8 @@ NAME_TO_FUNC = {
 
 def _randomly_negate_tensor(tensor):
     """With 50% prob turn the tensor negative."""
-    should_flip = tf.cast(tf.floor(tf.random_uniform([]) + 0.5), tf.bool)
-    final_tensor = tf.cond(should_flip, lambda: tensor, lambda: -tensor)
+    should_flip = tf.cast(tf.floor(tf.random.uniform([]) + 0.5), tf.bool)
+    final_tensor = tf.cond(pred=should_flip, true_fn=lambda: tensor, false_fn=lambda: -tensor)
     return final_tensor
 
 
@@ -1520,24 +1520,24 @@ def _apply_func_with_prob(func, image, args, prob, bboxes):
 
     # Apply the function with probability `prob`.
     should_apply_op = tf.cast(
-        tf.floor(tf.random_uniform([], dtype=tf.float32) + prob), tf.bool)
+        tf.floor(tf.random.uniform([], dtype=tf.float32) + prob), tf.bool)
     augmented_image, augmented_bboxes = tf.cond(
-        should_apply_op,
-        lambda: func(image, bboxes, *args),
-        lambda: (image, bboxes))
+        pred=should_apply_op,
+        true_fn=lambda: func(image, bboxes, *args),
+        false_fn=lambda: (image, bboxes))
     return augmented_image, augmented_bboxes
 
 
 def select_and_apply_random_policy(policies, image, bboxes):
     """Select a random policy from `policies` and apply it to `image`."""
-    policy_to_select = tf.random_uniform([], maxval=len(policies), dtype=tf.int32)
+    policy_to_select = tf.random.uniform([], maxval=len(policies), dtype=tf.int32)
     # Note that using tf.case instead of tf.conds would result in significantly
     # larger graphs and would even break export for some larger policies.
     for (i, policy) in enumerate(policies):
         image, bboxes = tf.cond(
-            tf.equal(i, policy_to_select),
-            lambda selected_policy=policy: selected_policy(image, bboxes),
-            lambda: (image, bboxes))
+            pred=tf.equal(i, policy_to_select),
+            true_fn=lambda selected_policy=policy: selected_policy(image, bboxes),
+            false_fn=lambda: (image, bboxes))
     return (image, bboxes)
 
 
