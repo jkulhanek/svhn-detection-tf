@@ -5,8 +5,25 @@ import os
 import numpy as np
 import tensorflow as tf
 
-import bboxes_utils
 from svhn_dataset import SVHN
+
+
+def bbox_area(a):
+    return max(0, a[SVHN.BOTTOM] - a[SVHN.TOP]) * max(0, a[SVHN.RIGHT] - a[SVHN.LEFT])
+
+def bbox_iou(a, b):
+    """ Compute IoU for two bboxes a, b.
+    Each bbox is parametrized as a four-tuple (top, left, bottom, right).
+    """
+    intersection = [
+        max(a[SVHN.TOP], b[SVHN.TOP]),
+        max(a[SVHN.LEFT], b[SVHN.LEFT]),
+        min(a[SVHN.BOTTOM], b[SVHN.BOTTOM]),
+        min(a[SVHN.RIGHT], b[SVHN.RIGHT]),
+    ]
+    if intersection[SVHN.RIGHT] <= intersection[SVHN.LEFT] or intersection[SVHN.BOTTOM] <= intersection[SVHN.TOP]:
+        return 0
+    return bbox_area(intersection) / float(bbox_area(a) + bbox_area(b) - bbox_area(intersection))
 
 def correct_predictions(gold_classes, gold_bboxes, predicted_classes, predicted_bboxes, iou_threshold=0.5):
     if len(gold_classes) != len(predicted_classes):
@@ -18,7 +35,7 @@ def correct_predictions(gold_classes, gold_bboxes, predicted_classes, predicted_
         for i in range(len(gold_classes)):
             if used[i] or gold_classes[i] != cls:
                 continue
-            iou = bboxes_utils.bbox_iou(bbox, gold_bboxes[i])
+            iou = bbox_iou(bbox, gold_bboxes[i])
             if iou >= iou_threshold and (best is None or iou > best_iou):
                 best, best_iou = i, iou
         if best is None:
