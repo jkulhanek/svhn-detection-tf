@@ -107,4 +107,5 @@ def build_augment(use_rotations = True):
             'image': tf.cast(result[0], tf.float32),
             'classes': classes
         }
+    return augment
 
