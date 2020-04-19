@@ -34,7 +34,17 @@ def parse_args(argv = None, skip_name = False):
     parser.add_argument('--epochs', default=100, type=int)
     parser.add_argument('--test', action='store_true')
     parser.add_argument('--disable_gpu', action='store_true')
-    parser.add_argument('--augmentation', default='none', help='One of the following: none, retina, retina-rotate, autoaugment')
+    parser.add_argument('--augmentation', type=str, choices=['none', 'retina', 'retina-rotate', 'autoaugment'],
+                        default='none', help='One of the following: none, retina, retina-rotate, autoaugment')
+    parser.add_argument('--augmentation_name', type=str, choices=['v0', 'v1', 'v2', 'v3', 'test'],
+                        default='v0', help='Autoaugmentation version.')
+    parser.add_argument('--cutout_max_pad_fraction', type=float, default=0.75, help='0.75 in efficientden')
+    parser.add_argument('--cutout_bbox_replace_with_mean', action='store_true', help='False in efficientden')
+    parser.add_argument('--cutout_const', type=int, default=10, help='100 in efficientden')
+    parser.add_argument('--cutout_bbox_const', type=int, default=50, help='50 in efficientden')
+    parser.add_argument('--translate_const', type=int, default=10, help='250 in efficientden')
+    parser.add_argument('--translate_bbox_const', type=int, default=10, help='120 in efficientden')
+
     if 'JOB' in os.environ:
         parser.add_argument('--name', default=os.environ['JOB'])
     elif '--test' in all_argv or skip_name:
@@ -300,7 +310,8 @@ if __name__ == '__main__':
 
     train_dataset, dev_dataset, _ = create_data(args.batch_size, 
             anchors, image_size = args.image_size,
-            test=args.test, augmentation=args.augmentation)
+            test=args.test, augmentation=args.augmentation,
+            args=args)
 
     # Prepare network and trainer
     anchors_per_level = args.num_scales * len(args.aspect_ratios)

@@ -1638,12 +1638,15 @@ def distort_image_with_autoaugment(image, bboxes, args):
 
     return build_and_apply_nas_policy(policy, image, bboxes, args)
 
-def autoaugment_image(image, bboxes, args):
+
+def autoaugment_image(example, args):
     """Applies the AutoAugment policy to `image` and `bboxes`. Just a type wrapper for `distort_image_with_autoaugment`.
 
     Args:
-      image: `Tensor` of shape [height, width, 3] type of float representing normalized an image in range [0, 1].
-      bboxes: `Tensor` of shape [N, 4] representing ground truth boxes.
+      example: dict with following keys
+        image: `Tensor` of shape [height, width, 3] type of float representing normalized an image in range [0, 1].
+        bboxes: `Tensor` of shape [N, 4] representing ground truth boxes.
+        classes: whatever
       args: Object with following properties
         augmentation_name: The name of the AutoAugment policy to use. The available
             options are `v0`, `v1`, `v2`, `v3` and `test`. `v0` is the policy used for
@@ -1663,8 +1666,8 @@ def autoaugment_image(image, bboxes, args):
       A tuple containing the augmented versions of `image` and `bboxes`.
     """
 
-    image = tf.cast(image * 255, tf.uint8)
-    bboxes = tf.cast(bboxes, tf.float32)
+    image = tf.cast(example['image'] * 255, tf.uint8)
+    bboxes = tf.cast(example['bboxes'], tf.float32)
 
     # Normalize bboxes
     bboxes, norm = tf.linalg.normalize(bboxes, axis=1)
@@ -1679,4 +1682,8 @@ def autoaugment_image(image, bboxes, args):
     image = tf.cast(image / 255, tf.float32)
     bboxes = tf.cast(bboxes, tf.int64)
 
-    return image, bboxes
+    return {
+        'image': image,
+        'bboxes': bboxes,
+        'classes': example['classes']
+    }
