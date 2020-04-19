@@ -131,20 +131,20 @@ class RetinaTrainer:
         regression_pred = tf.expand_dims(regression_pred, 2)
         class_pred = tf.nn.sigmoid(class_pred)
         boxes, scores, classes, valid = tf.image.combined_non_max_suppression(
-            regression_pred, class_pred, 3, 5, score_threshold=score_threshold,
-            iou_threshold=0.5, clip_boxes=False) 
+            regression_pred, class_pred, 5, 5, score_threshold=score_threshold,
+            iou_threshold=0.2, clip_boxes=False) 
 
         # Clip bounding boxes
         boxes = tf.clip_by_value(boxes, 0, self.args.image_size)
         return boxes, scores, classes, valid
 
-    def predict(self, dataset = None):
+    def predict(self, dataset = None, score_threshold = 0.05):
         predictions = []
         if dataset is None: dataset = self.val_dataset
         dataset = dataset.batch(self.args.batch_size).prefetch(4)
 
         for x in dataset: 
-            for boxes, scores, classes, valid_detections in zip(*map(lambda x: x.numpy(), self.predict_on_batch(x))):
+            for boxes, scores, classes, valid_detections in zip(*map(lambda x: x.numpy(), self.predict_on_batch(x, score_threshold))):
                 predictions.append((boxes[:valid_detections], classes[:valid_detections], scores[:valid_detections]))
         return predictions
 
