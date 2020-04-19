@@ -59,7 +59,6 @@ def augment_map(bboxes, img, args):
 
 def create_data(batch_size, anchors, image_size, test=False, augmentation='none', args=None):
     assert test == False or batch_size <= 8
-    assert augmentation in ['none', 'retina', 'retina-rotate', 'autoaugment']
     dataset = SVHN()
     anchors = tf.cast(tf.convert_to_tensor(anchors), tf.float32)
 
@@ -72,13 +71,18 @@ def create_data(batch_size, anchors, image_size, test=False, augmentation='none'
     train, dev, test = tuple(map(create_dataset,
                                  (dataset.train, dataset.dev, dataset.test)))
 
-    def augment(x): return x
-    if augmentation == 'retina':
+    if augmentation == 'none':
+        augment = lambda x: x
+    elif augmentation == 'retina':
         augment = build_augment(False)
     elif augmentation == 'retina-rotate':
         augment = build_augment(True)
-    elif augmentation == 'autoaugment':
-        augment = partial(autoaugment_image, args=args)
+    elif augmentation.startswith('autoaugment'):
+        _, autoaugment_name = augmentation.split('-')
+        args.augmentation_name = autoaugment_name
+        augment = partial(autoaugment_image, args = args)
+    else:
+        raise ValueError(f'Unknown augmentation "{augmentation}"')
 
     # Generate training data with matched gt boxes
     train_dataset = train.map(augment).map(partial(generate_training_data, anchors))
