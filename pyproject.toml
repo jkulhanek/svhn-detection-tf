@@ -1,0 +1,31 @@
+[tool.poetry]
+name = "svhn-detection-tf"
+version = "0.1.0"
+description = ""
+authors = ["Jonáš Kulhánek <jonas.kulhanek@live.com>", "Patrik Valkovic <patrik.valkovic@hotmail.cz>", "Martin Vastl <martin.vastl2@gmail.com>", "Jan Uhlík <jan@uhlik.me>"]
+license = "MIT"
+
+[tool.poetry.dependencies]
+python = "~3.7" # "^3.8"
+tensorflow = "~2.1.0" # "2.2.0rc3"
+tensorflow-addons = "~0.9.1 "# { git = "https://github.com/tensorflow/addons.git", tag = "r0.9" }
+tensorflow-estimator = "~2.1.0"
+numpy = "*"
+pandas = "*"
+matplotlib = "*"
+tqdm = "*"
+wandb = "^0.8.32"
+
+[tool.poetry.dev-dependencies]
+autopep8 = "*"
+pylint = "*"
+jedi = "~0.16.0"
+rope = "*"
+flake8 = "*"
+ipython = "*"
+ipykernel = "*"
+ipdb = "*"
+
+[build-system]
+requires = ["poetry>=0.12"]
+build-backend = "poetry.masonry.api"
