@@ -151,7 +151,7 @@ class RetinaTrainer:
 
     def fit(self): 
         self._start_wandb()
-        dataset = self.dataset \
+        dataset = self.dataset.shuffle(3000) \
             .batch(args.batch_size) \
             .prefetch(4)
 

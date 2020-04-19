@@ -71,7 +71,7 @@ def create_data(batch_size, anchors, image_size, test=False, augmentation='none'
 
 
     # Generate training data with matched gt boxes
-    train_dataset = train.map(augment).map(partial(generate_training_data, anchors)).shuffle(3000)
+    train_dataset = train.map(augment).map(partial(generate_training_data, anchors))
     dev_dataset = dev.map(partial(generate_training_data, anchors)).cache()
 
     # Generate evaluation data
