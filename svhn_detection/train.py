@@ -177,12 +177,12 @@ class RetinaTrainer:
                 self.metrics['val_class_loss'].update_state(class_loss)
 
             # Compute straka's metric
-            predictions = self.predict(self.val_dataset)
-            for (boxes, classes, scores), gold in zip(predictions, self.val_dataset):
-                gold_classes, gold_boxes = gold['gt-class'].numpy(), gold['gt-bbox'].numpy()
-                num_gt = gold['gt-length'].numpy()
-                gold_classes, gold_boxes = gold_classes[:num_gt], gold_boxes[:num_gt]
-                self.metrics['val_score'].update_state(utils.correct_predictions(gold_boxes, gold_classes, classes, boxes))
+            #predictions = self.predict(self.val_dataset)
+            # for (boxes, classes, scores), gold in zip(predictions, self.val_dataset):
+            #     gold_classes, gold_boxes = gold['gt-class'].numpy(), gold['gt-bbox'].numpy()
+            #     num_gt = gold['gt-length'].numpy()
+            #    gold_classes, gold_boxes = gold_classes[:num_gt], gold_boxes[:num_gt]
+            #     self.metrics['val_score'].update_state(utils.correct_predictions(gold_boxes, gold_classes, classes, boxes))
 
             # Save model every 20 epochs
             if (epoch + 1) % 20 == 0:
