@@ -29,8 +29,8 @@ def parse_args(argv = None, skip_name = False):
     parser.add_argument('--weight_decay', default=4e-5, type=float, help='4e-5 in efficientdet')
     parser.add_argument('--momentum', default=0.9, type=float, help='0.9 in efficientdet')
     parser.add_argument('--grad_clip', default=1.0, type=float, help='not used in efficientdet')
-    parser.add_argument('--score_threshold', default=0.2, type=float)
-    parser.add_argument('--iou_threshold', default=0.4, type=float)
+    parser.add_argument('--score_threshold', default=0.5, type=float)
+    parser.add_argument('--iou_threshold', default=0.2, type=float)
     parser.add_argument('--epochs', default=100, type=int)
     parser.add_argument('--test', action='store_true')
     parser.add_argument('--disable_gpu', action='store_true')
@@ -62,20 +62,27 @@ def output_predictions(model, dataset = 'test', filename='svhn_classification_{d
         dataset = getattr(SVHN(), dataset).map(SVHN.parse)
         mapped_dataset = dataset.map(scale_input(model.args.image_size))
         for x, xorig in zip(mapped_dataset.batch(1), dataset):
-            predicted_bboxes, _, predicted_classes, valid = model.predict_on_batch(x, model.args.iou_threshold)
+            predicted_bboxes, scores, predicted_classes, valid = model.predict_on_batch(x)
+            num_valid = valid[0].numpy()
+            predicted_bboxes = predicted_bboxes[0, :num_valid, ...].numpy() 
+            predicted_classes = predicted_classes[0, :num_valid, ...].numpy()
+            scores = scores[0, :num_valid, ...].numpy()
+
+            predicted_bboxes = predicted_bboxes[scores > model.args.score_threshold]
+            predicted_classes = predicted_classes[scores > model.args.score_threshold]
+
             transformed_bboxes = [] 
             output = []
-            for _, label, bbox in zip(range(valid[0].numpy()), predicted_classes.numpy()[0], predicted_bboxes[0]):
+            for label, bbox in zip(predicted_classes, predicted_bboxes):
                 output.append(label.astype(np.int32))
-                bbox_transformed = tf.cast(tf.shape(xorig['image'])[1], tf.float32) * bbox  / float(model.args.image_size)
-                transformed_bboxes.append(bbox_transformed.numpy().astype(np.int32))
-                output.extend(bbox_transformed.numpy().astype(np.int32))
+                bbox_transformed = tf.cast(tf.shape(xorig['image'])[1], tf.float32).numpy() * bbox  / float(model.args.image_size)
+                transformed_bboxes.append(bbox_transformed.astype(np.int32))
+                output.extend(bbox_transformed.astype(np.int32))
             print(*output, file=out_file)
 
 
             correct += utils.correct_predictions(xorig["classes"].numpy(), xorig["bboxes"].numpy(),
-                    predicted_classes.numpy()[0].astype(np.int32)[:valid[0].numpy()],
-                    transformed_bboxes)
+                    predicted_classes.astype(np.int32), transformed_bboxes)
             total += 1
     return correct / total
 
@@ -152,28 +159,28 @@ class RetinaTrainer:
         return (loss, regression_loss, class_loss)
 
     @tf.function
-    def predict_on_batch(self, x, score_threshold = 0.05):
+    def predict_on_batch(self, x):
         class_pred, bbox_pred = self.model(x['image'], training=False)
         regression_pred = utils.bbox_from_fast_rcnn(self.anchors, bbox_pred) 
         regression_pred = tf.expand_dims(regression_pred, 2)
         class_pred = tf.nn.sigmoid(class_pred)
         boxes, scores, classes, valid = tf.image.combined_non_max_suppression(
-            regression_pred, class_pred, 5, 5, score_threshold=score_threshold,
+            regression_pred, class_pred, 5, 5, score_threshold=0.05,
             iou_threshold=self.args.iou_threshold, clip_boxes=False) 
 
         # Clip bounding boxes
         boxes = tf.clip_by_value(boxes, 0, self.args.image_size)
         return boxes, scores, classes, valid
 
-    def predict(self, dataset = None, score_threshold = None):
-        if score_threshold is None: score_threshold = self.args.score_threshold
+    def predict(self, dataset = None):
         predictions = []
         if dataset is None: dataset = self.val_dataset
         dataset = dataset.batch(self.args.batch_size).prefetch(4)
 
         for x in dataset: 
-            for boxes, scores, classes, valid_detections in zip(*map(lambda x: x.numpy(), self.predict_on_batch(x, score_threshold))):
-                predictions.append((boxes[:valid_detections], classes[:valid_detections], scores[:valid_detections]))
+            for boxes, scores, classes, valid_detections in zip(*map(lambda x: x.numpy(), self.predict_on_batch(x))):
+                boxes, scores, classes = boxes[:valid_detections], scores[:valid_detections], classes[:valid_detections]
+                predictions.append((boxes, classes, scores))
         return predictions
 
 
@@ -187,10 +194,9 @@ class RetinaTrainer:
             .batch(args.batch_size) \
             .prefetch(4)
 
-        log_append = dict()
-            
         for epoch in range(self.args.epochs):
             self._epoch.assign(epoch)
+            log_append = dict()
             
             # Reset metrics
             for m in self.metrics.values(): m.reset_states()
@@ -218,6 +224,7 @@ class RetinaTrainer:
                 gold_classes, gold_boxes = gold['gt-class'].numpy(), gold['gt-bbox'].numpy()
                 num_gt = gold['gt-length'].numpy()
                 gold_classes, gold_boxes = gold_classes[:num_gt], gold_boxes[:num_gt]
+                boxes, classes = boxes[scores > self.args.score_threshold], classes[scores > self.args.score_threshold]
                 self.metrics['val_score'].update_state(utils.correct_predictions(gold_classes, gold_boxes, classes, boxes))
             
             # mAP metric should be implemented here. Note, that predictions
