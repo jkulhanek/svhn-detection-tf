@@ -60,8 +60,6 @@ class RetinaTrainer:
         self.anchors = anchors
         self.args = args
         self.dataset = dataset
-
-        self.eval_dataset = val_dataset
         self.val_dataset = val_dataset
 
 
