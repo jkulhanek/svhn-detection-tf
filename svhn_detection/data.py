@@ -7,6 +7,7 @@ from augment import build_augment
 MAX_GOLD_BOXES = 5
 NUM_TRAINING_SAMPLES = 10000 # Cache this number
 
+
 def scale_input(image_size):
     def scale(x):
         x = dict(**x)
@@ -15,7 +16,8 @@ def scale_input(image_size):
         x['bboxes'] = tf.cast(x['bboxes'], tf.float32) * tf.convert_to_tensor([oh, ow, oh, ow], tf.float32)
         x['image'] = tf.image.resize(x['image'], (image_size, image_size))
         return x
-    return scale
+    return scale 
+
 
 def generate_training_data(anchors, x):    
     orig_classes = tf.cast(x['classes'], tf.int32)

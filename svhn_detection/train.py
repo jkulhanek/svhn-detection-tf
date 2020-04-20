@@ -11,12 +11,12 @@ from svhn_dataset import SVHN
 import utils
 import utils
 from functools import partial
-from data import create_data, NUM_TRAINING_SAMPLES
+from data import create_data, NUM_TRAINING_SAMPLES, generate_evaluation_data, scale_input
 import os
 
 
 
-def parse_args(argv = None): 
+def parse_args(argv = None, skip_name = False): 
     all_argv = list(sys.argv)
     if argv is not None: all_argv.extend(argv)
     argstr = ' '.join(all_argv)
@@ -29,15 +29,15 @@ def parse_args(argv = None):
     parser.add_argument('--weight_decay', default=4e-5, type=float, help='4e-5 in efficientdet')
     parser.add_argument('--momentum', default=0.9, type=float, help='0.9 in efficientdet')
     parser.add_argument('--grad_clip', default=1.0, type=float, help='not used in efficientdet')
-    parser.add_argument('--score_threshold', default=0.5, type=float)
-    parser.add_argument('--iou_threshold', default=0.2, type=float)
-    parser.add_argument('--epochs', default=70, type=int)
+    parser.add_argument('--score_threshold', default=0.2, type=float)
+    parser.add_argument('--iou_threshold', default=0.4, type=float)
+    parser.add_argument('--epochs', default=100, type=int)
     parser.add_argument('--test', action='store_true')
     parser.add_argument('--disable_gpu', action='store_true')
     parser.add_argument('--augmentation', default='none', help='One of the following: none, retina, retina-rotate, autoaugment')
     if 'JOB' in os.environ:
         parser.add_argument('--name', default=os.environ['JOB'])
-    elif '--test' in all_argv:
+    elif '--test' in all_argv or skip_name:
         parser.add_argument('--name', default='test_test')
     else:
         parser.add_argument('--name', required=True)
@@ -52,6 +52,32 @@ def parse_args(argv = None):
 
     args.aspect_ratios = [(1.4, 0.7), (1.0, 1.0)]
     return args, argstr
+
+
+def output_predictions(model, dataset = 'test', filename='svhn_classification_{dataset}.txt'):
+    correct = 0
+    total = 0
+    with open(filename.format(dataset = dataset), "w", encoding="utf-8") as out_file:
+        # TODO: Predict the digits and their bounding boxes on the test set.
+        dataset = getattr(SVHN(), dataset).map(SVHN.parse)
+        mapped_dataset = dataset.map(scale_input(model.args.image_size))
+        for x, xorig in zip(mapped_dataset.batch(1), dataset):
+            predicted_bboxes, _, predicted_classes, valid = model.predict_on_batch(x, model.args.iou_threshold)
+            transformed_bboxes = [] 
+            output = []
+            for _, label, bbox in zip(range(valid[0].numpy()), predicted_classes.numpy()[0], predicted_bboxes[0]):
+                output.append(label.astype(np.int32))
+                bbox_transformed = tf.cast(tf.shape(xorig['image'])[1], tf.float32) * bbox  / float(model.args.image_size)
+                transformed_bboxes.append(bbox_transformed.numpy().astype(np.int32))
+                output.extend(bbox_transformed.numpy().astype(np.int32))
+            print(*output, file=out_file)
+
+
+            correct += utils.correct_predictions(xorig["classes"].numpy(), xorig["bboxes"].numpy(),
+                    predicted_classes.numpy()[0].astype(np.int32)[:valid[0].numpy()],
+                    transformed_bboxes)
+            total += 1
+    return correct / total
 
 
 class RetinaTrainer:
@@ -160,6 +186,8 @@ class RetinaTrainer:
         val_dataset = self.val_dataset \
             .batch(args.batch_size) \
             .prefetch(4)
+
+        log_append = dict()
             
         for epoch in range(self.args.epochs):
             self._epoch.assign(epoch)
@@ -200,10 +228,17 @@ class RetinaTrainer:
             # Save model every 20 epochs
             if (epoch + 1) % 20 == 0:
                 self.save()
+                val_acc = output_predictions(self, 'dev')
+                output_predictions(self, 'test')
+                if hasattr(self, '_wandb'):
+                    self._wandb.save('svhn_classification_dev.txt')
+                    self._wandb.save('svhn_classification_test.txt')
                 print('model saved')
+                print(f'validation score: {val_acc * 100:.2f}')
+                log_append = dict(saved_val_score=val_acc, **log_append)
 
             # Log current values
-            self.log()
+            self.log(**log_append)
 
     def evaluate(self, dataset = None):
         if dataset is None: dataset = self.val_dataset
@@ -227,11 +262,12 @@ class RetinaTrainer:
         )
 
 
-    def log(self):
+    def log(self, **kwargs):
         values = {k: v.result().numpy() for k, v in self.metrics.items()}
         values['epoch'] = self._epoch.numpy()
         values['lr'] = self.scheduler().numpy()
         values['wd'] = self.wd_scheduler().numpy()
+        values.update(kwargs)
         if hasattr(self, '_wandb'):
             # We will use wandb
             self._wandb.log(values, step=values['epoch'])
