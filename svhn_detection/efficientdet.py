@@ -122,7 +122,7 @@ def EfficientDet(num_classes, anchors_per_level, pyramid_levels = 4, backbone = 
 
     input_tensor = tf.keras.layers.Input((input_size, input_size, 3), dtype=tf.float32)
     if backbone is None:
-        backbone = pretrained_efficientnet_b0(False, dynamic_shape=True)
+        backbone = pretrained_efficientnet_b0(False, dynamic_shape=True, drop_connect_rate = 0.0)
 
     # Fix the number of output feature maps
     x = backbone(input_tensor)[1:-1][-pyramid_levels:]
