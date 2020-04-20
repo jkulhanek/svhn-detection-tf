@@ -29,7 +29,8 @@ def parse_args(argv = None):
     parser.add_argument('--weight_decay', default=4e-5, type=float, help='4e-5 in efficientdet')
     parser.add_argument('--momentum', default=0.9, type=float, help='0.9 in efficientdet')
     parser.add_argument('--grad_clip', default=1.0, type=float, help='not used in efficientdet')
-    parser.add_argument('--score_threshold', default=0.3, type=float)
+    parser.add_argument('--score_threshold', default=0.5, type=float)
+    parser.add_argument('--iou_threshold', default=0.2, type=float)
     parser.add_argument('--epochs', default=70, type=int)
     parser.add_argument('--test', action='store_true')
     parser.add_argument('--disable_gpu', action='store_true')
@@ -134,7 +135,7 @@ class RetinaTrainer:
         class_pred = tf.nn.sigmoid(class_pred)
         boxes, scores, classes, valid = tf.image.combined_non_max_suppression(
             regression_pred, class_pred, 5, 5, score_threshold=score_threshold,
-            iou_threshold=0.2, clip_boxes=False) 
+            iou_threshold=self.args.iou_threshold, clip_boxes=False) 
 
         # Clip bounding boxes
         boxes = tf.clip_by_value(boxes, 0, self.args.image_size)
