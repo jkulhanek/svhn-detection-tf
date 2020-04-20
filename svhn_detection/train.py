@@ -29,7 +29,7 @@ def parse_args(argv = None):
     parser.add_argument('--weight_decay', default=4e-5, type=float, help='4e-5 in efficientdet')
     parser.add_argument('--momentum', default=0.9, type=float, help='0.9 in efficientdet')
     parser.add_argument('--grad_clip', default=1.0, type=float, help='not used in efficientdet')
-    parser.add_argument('--score_threshold', default=0.5, type=float)
+    parser.add_argument('--score_threshold', default=0.3, type=float)
     parser.add_argument('--epochs', default=70, type=int)
     parser.add_argument('--test', action='store_true')
     parser.add_argument('--disable_gpu', action='store_true')
@@ -140,7 +140,8 @@ class RetinaTrainer:
         boxes = tf.clip_by_value(boxes, 0, self.args.image_size)
         return boxes, scores, classes, valid
 
-    def predict(self, dataset = None, score_threshold = 0.05):
+    def predict(self, dataset = None, score_threshold = None):
+        if score_threshold is not None: score_threshold = self.args.score_threshold
         predictions = []
         if dataset is None: dataset = self.val_dataset
         dataset = dataset.batch(self.args.batch_size).prefetch(4)
@@ -190,8 +191,6 @@ class RetinaTrainer:
                 gold_classes, gold_boxes = gold['gt-class'].numpy(), gold['gt-bbox'].numpy()
                 num_gt = gold['gt-length'].numpy()
                 gold_classes, gold_boxes = gold_classes[:num_gt], gold_boxes[:num_gt]
-                boxes = boxes[scores > self.args.score_threshold]
-                classes = classes[scores > self.args.score_threshold]
                 self.metrics['val_score'].update_state(utils.correct_predictions(gold_classes, gold_boxes, classes, boxes))
             
             # mAP metric should be implemented here. Note, that predictions
