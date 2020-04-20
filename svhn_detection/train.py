@@ -16,8 +16,9 @@ import os
 
 
 
-def parse_args(argv = []): 
-    all_argv = list(argv) + sys.argv
+def parse_args(argv = None): 
+    all_argv = list(sys.argv)
+    if argv is not None: all_argv.extend(argv)
     argstr = ' '.join(all_argv)
     parser = argparse.ArgumentParser()
     parser.add_argument('--batch_size', default=128, type=int)
