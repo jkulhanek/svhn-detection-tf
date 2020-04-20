@@ -141,7 +141,7 @@ class RetinaTrainer:
         return boxes, scores, classes, valid
 
     def predict(self, dataset = None, score_threshold = None):
-        if score_threshold is not None: score_threshold = self.args.score_threshold
+        if score_threshold is None: score_threshold = self.args.score_threshold
         predictions = []
         if dataset is None: dataset = self.val_dataset
         dataset = dataset.batch(self.args.batch_size).prefetch(4)
