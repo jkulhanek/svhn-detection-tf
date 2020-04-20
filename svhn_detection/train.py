@@ -250,9 +250,7 @@ if __name__ == '__main__':
     # Prepare data
     num_classes = SVHN.LABELS
     pyramid_levels = args.pyramid_levels
-    smallest_stride = 2**(6 - pyramid_levels)
     anchors = utils.generate_anchors(pyramid_levels, args.image_size, 
-            first_feature_scale=smallest_stride, anchor_scale=float(smallest_stride),
             num_scales=args.num_scales, aspect_ratios=args.aspect_ratios)
 
     train_dataset, dev_dataset, _ = create_data(args.batch_size, 
