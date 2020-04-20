@@ -29,6 +29,7 @@ def parse_args(argv = None):
     parser.add_argument('--weight_decay', default=4e-5, type=float, help='4e-5 in efficientdet')
     parser.add_argument('--momentum', default=0.9, type=float, help='0.9 in efficientdet')
     parser.add_argument('--grad_clip', default=1.0, type=float, help='not used in efficientdet')
+    parser.add_argument('--score_threshold', default=0.5, type=float)
     parser.add_argument('--epochs', default=70, type=int)
     parser.add_argument('--test', action='store_true')
     parser.add_argument('--disable_gpu', action='store_true')
@@ -181,14 +182,17 @@ class RetinaTrainer:
                 self.metrics['val_regression_loss'].update_state(regression_loss)
                 self.metrics['val_class_loss'].update_state(class_loss)
 
+
             # Compute straka's metric
-            # This should work, however, I haven't tested it!!
+            # TODO: vectorize Straka's metric
             predictions = self.predict(self.val_dataset)
             for (boxes, classes, scores), gold in zip(predictions, self.val_dataset):
                 gold_classes, gold_boxes = gold['gt-class'].numpy(), gold['gt-bbox'].numpy()
                 num_gt = gold['gt-length'].numpy()
                 gold_classes, gold_boxes = gold_classes[:num_gt], gold_boxes[:num_gt]
-                self.metrics['val_score'].update_state(utils.correct_predictions(gold_boxes, gold_classes, classes, boxes))
+                boxes = boxes[scores > self.args.score_threshold]
+                classes = classes[scores > self.args.score_threshold]
+                self.metrics['val_score'].update_state(utils.correct_predictions(gold_classes, gold_boxes, classes, boxes))
             
             # mAP metric should be implemented here. Note, that predictions
             # That are generated use transformed bb, i.e., the bb is scaled to args.image_size

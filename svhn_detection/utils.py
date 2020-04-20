@@ -44,7 +44,7 @@ def np_bbox_iou(a, b):
     ]
     if intersection[SVHN.RIGHT] <= intersection[SVHN.LEFT] or intersection[SVHN.BOTTOM] <= intersection[SVHN.TOP]:
         return 0
-    return bbox_area(intersection) / float(np_bbox_area(a) + np_bbox_area(b) - np_bbox_area(intersection))
+    return np_bbox_area(intersection) / float(np_bbox_area(a) + np_bbox_area(b) - np_bbox_area(intersection))
 
 
 def bbox_to_fast_rcnn(anchor, bbox):
@@ -203,7 +203,7 @@ def mask_reduce_sum_over_batch(values, mask):
 def correct_predictions(gold_classes, gold_bboxes, predicted_classes, predicted_bboxes, iou_threshold=0.5):
     if len(gold_classes) != len(predicted_classes):
         return False
-
+    
     used = [False] * len(gold_classes)
     for cls, bbox in zip(predicted_classes, predicted_bboxes):
         best = None
