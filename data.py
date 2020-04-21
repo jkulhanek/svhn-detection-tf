@@ -32,11 +32,12 @@ def generate_evaluation_data(x):
 
 def augment_map(bboxes, img, args):
     return augment(img, bboxes,
-                                width_shift=args.aug_width_shift, height_shift=args.aug_height_shift,
-                                zoom=args.aug_zoom,
-                                rotation=args.aug_rotation,
-                                vertical_fraction=args.aug_vertical_fraction,
-                                horizontal_fraction=args.aug_horizontal_fraction)
+                   width_shift=args.aug_width_shift, height_shift=args.aug_height_shift,
+                   zoom=args.aug_zoom,
+                   rotation=args.aug_rotation,
+                   vertical_fraction=args.aug_vertical_fraction,
+                   horizontal_fraction=args.aug_horizontal_fraction,
+                   iou_threshold=args.aug_iou_threshold)
 
 def create_data(batch_size, anchors, image_size, test=False, args=None):
     assert test == False or batch_size <= 8 

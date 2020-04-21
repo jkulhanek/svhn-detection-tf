@@ -1,8 +1,9 @@
 import tensorflow as tf
 from svhn_dataset import SVHN
 import numpy as np
+from utils import bbox_iou
 
-def augment(img, bbox, width_shift=0, height_shift=0, zoom=0, rotation=0, vertical_fraction = 1.0, horizontal_fraction=1.0):
+def augment(img, bbox, width_shift=0, height_shift=0, zoom=0, rotation=0, vertical_fraction = 1.0, horizontal_fraction=1.0, iou_threshold = 0.7):
 
     #print(bbox)
 
@@ -75,4 +76,13 @@ def augment(img, bbox, width_shift=0, height_shift=0, zoom=0, rotation=0, vertic
     zoom_bbox = tf.cast(translate_bbox / zoom_tmp + center_tmp, tf.int64)
     #print(zoom_bbox)
 
-    return img_transformed, zoom_bbox
+    aligned_boxes = tf.stack([
+        tf.maximum(zoom_bbox[:,0], 0),   #top
+        tf.maximum(zoom_bbox[:,1], 0), # left
+        tf.minimum(zoom_bbox[:,2], img_height), # bottom
+        tf.minimum(zoom_bbox[:,3], img_width), # right
+    ], axis=1)
+    iou = bbox_iou(tf.cast(aligned_boxes, tf.double), tf.cast(zoom_bbox, tf.double))
+    to_use = tf.linalg.diag_part(iou) > iou_threshold
+
+    return img_transformed, aligned_boxes[to_use]

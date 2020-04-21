@@ -37,6 +37,7 @@ def parse_args(argv = []):
     parser.add_argument('--aug_rotation', default=0, type=float)
     parser.add_argument('--aug_vertical_fraction', default=1, type=float)
     parser.add_argument('--aug_horizontal_fraction', default=1, type=float)
+    parser.add_argument('--aug_iou_threshold', default=0.6, type=float)
     if 'JOB' in os.environ:
         parser.add_argument('--name', default=os.environ['JOB'])
     elif '--test' in argv:
