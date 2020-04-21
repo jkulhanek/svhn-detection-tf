@@ -2,7 +2,11 @@ import tensorflow as tf
 from functools import partial
 from svhn_dataset import SVHN
 import utils
-from augment import augment
+from augment import build_augment
+
+MAX_GOLD_BOXES = 5
+NUM_TRAINING_SAMPLES = 10000 # Cache this number
+
 
 def scale_input(image_size):
     def scale(x):
@@ -12,7 +16,8 @@ def scale_input(image_size):
         x['bboxes'] = tf.cast(x['bboxes'], tf.float32) * tf.convert_to_tensor([oh, ow, oh, ow], tf.float32)
         x['image'] = tf.image.resize(x['image'], (image_size, image_size))
         return x
-    return scale
+    return scale 
+
 
 def generate_training_data(anchors, x):    
     orig_classes = tf.cast(x['classes'], tf.int32)
@@ -22,8 +27,16 @@ def generate_training_data(anchors, x):
     onehot_classes = onehot_classes * tf.expand_dims(tf.cast(classes > 0, dtype=onehot_classes.dtype), -1)
     class_mask = mask
     regression_mask = tf.logical_and(class_mask, classes > 0)
+
+    # Add original classes and bboxes
+    num_bboxes = tf.shape(orig_classes)[0]
+    orig_classes = tf.pad(orig_classes, tf.convert_to_tensor([[0, MAX_GOLD_BOXES - num_bboxes]], dtype=tf.int32))
+    orig_bboxes = tf.pad(orig_bboxes, tf.convert_to_tensor([[0, MAX_GOLD_BOXES - num_bboxes], [0,0]], dtype=tf.int32))
+
     return { 'image':x['image'], 'bbox': bboxes, 'class': onehot_classes, 
-            'class_mask': class_mask, 'regression_mask': regression_mask }
+            'class_mask': class_mask, 'regression_mask': regression_mask,
+            'gt-class': orig_classes, 'gt-bbox': orig_bboxes,
+            'gt-length': num_bboxes }
 
 def generate_evaluation_data(x):
     orig_classes = tf.cast(x['classes'], tf.int32)
@@ -39,36 +52,29 @@ def augment_map(bboxes, img, args):
                    horizontal_fraction=args.aug_horizontal_fraction,
                    iou_threshold=args.aug_iou_threshold)
 
-def create_data(batch_size, anchors, image_size, test=False, args=None):
+def create_data(batch_size, anchors, image_size, test=False, augmentation='none'):
     assert test == False or batch_size <= 8 
+    assert augmentation in ['none','retina','retina-rotate']
     dataset = SVHN()
     anchors = tf.cast(tf.convert_to_tensor(anchors), tf.float32)
     def create_dataset(x):
         if test:
-            x = dataset.train.take(1)
+            x = dataset.train.take(8)
         return x.map(SVHN.parse) \
                 .map(scale_input(image_size)) \
 
     train, dev, test = tuple(map(create_dataset, 
         (dataset.train, dataset.dev, dataset.test)))
 
-    def _pass(x):
-        bboxes, image, classes = x['bboxes'], x['image'], x['classes']
-        result = tf.py_function(
-            partial(augment_map, args=args),
-            inp=[bboxes, image],
-            Tout=[tf.int64, tf.int64]
-        )
-        return {
-            'bboxes': tf.cast(result[1], tf.float32),
-            'image': tf.cast(result[0], tf.float32),
-            'classes': classes
-        }
+    augment = lambda x: x
+    if augmentation == 'retina':
+        augment = build_augment(False)
+    elif augmentation == 'retina-rotate':
+        augment = build_augment(True)
+
 
     # Generate training data with matched gt boxes
-    train_dataset = train.map(_pass).map(partial(generate_training_data, anchors)).shuffle(3000)
+    train_dataset = train.map(augment).map(partial(generate_training_data, anchors))
     dev_dataset = dev.map(partial(generate_training_data, anchors)).cache()
-
-    # Generate evaluation data
-    eval_dataset = dev.map(generate_evaluation_data).cache() 
-    return (train_dataset, dev_dataset, eval_dataset)
+    test_dataset = test.map(generate_evaluation_data).cache()
+    return (train_dataset, dev_dataset, test_dataset)

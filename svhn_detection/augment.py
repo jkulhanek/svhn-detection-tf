@@ -1,9 +1,10 @@
 import tensorflow as tf
 from svhn_dataset import SVHN
+from functools import partial
 import numpy as np
 from utils import bbox_iou
 
-def augment(img, bbox, width_shift=0, height_shift=0, zoom=0, rotation=0, vertical_fraction = 1.0, horizontal_fraction=1.0, iou_threshold = 0.7):
+def augment(img, bbox, width_shift=0, height_shift=0, zoom=0, rotation=0, vertical_fraction = 1.0, horizontal_fraction=1.0, iou_threshold = 0.6):
 
     #print(bbox)
 
@@ -86,3 +87,34 @@ def augment(img, bbox, width_shift=0, height_shift=0, zoom=0, rotation=0, vertic
     to_use = tf.linalg.diag_part(iou) > iou_threshold
 
     return img_transformed, aligned_boxes[to_use]
+
+
+def build_augment_map(use_rotations = True):
+    def augment_map(bboxes, img):
+        shift = 0.2
+        rotation = 15
+        zoom = 0.2
+        return augment_py(img, bboxes, width_shift=shift,
+                height_shift=shift, zoom=zoom,
+                rotation=rotation if use_rotations else 0, vertical_fraction=0.6,
+                horizontal_fraction=0.9, iou_threshold=0.6)
+    return augment_map
+
+
+def build_augment(use_rotations = True):
+    augment_map = build_augment_map(use_rotations)
+
+    @tf.function
+    def augment(x):
+        bboxes, image, classes = x['bboxes'], x['image'], x['classes']
+        result = tf.py_function(
+            augment_map,
+            inp=[bboxes, image],
+            Tout=[tf.int64, tf.int64]
+        )
+        return {
+            'bboxes': tf.cast(result[1], tf.float32),
+            'image': tf.cast(result[0], tf.float32),
+            'classes': classes
+        }
+    return augment

@@ -30,34 +30,21 @@ def bbox_iou(a, b):
 
 
 def np_bbox_area(a):
-    assert isinstance(a, np.ndarray) 
-    return np.maximum(0, a[...,2] - a[...,0]) * np.maximum(0, a[...,3] - a[...,1]) 
-
+    return max(0, a[SVHN.BOTTOM] - a[SVHN.TOP]) * max(0, a[SVHN.RIGHT] - a[SVHN.LEFT])
 
 def np_bbox_iou(a, b):
     """ Compute IoU for two bboxes a, b.
-
     Each bbox is parametrized as a four-tuple (top, left, bottom, right).
     """
-    assert isinstance(a, np.ndarray)
-    assert isinstance(b, np.ndarray)
-
-    a = np.expand_dims(a, -2)
-    b = np.expand_dims(b, -3)
-    intersection = np.stack([
-        np.maximum(a[...,0], b[...,0]),
-        np.maximum(a[...,1], b[...,1]),
-        np.minimum(a[...,2], b[...,2]),
-        np.minimum(a[...,3], b[...,3]),
-    ], -1)
-    area_a = bbox_area(a)
-    area_b = bbox_area(b)
-    area_intersection = bbox_area(intersection)
-    area_union = area_a + area_b - area_intersection
-    filter_expr = area_intersection > 0
-    area_intersection[filter_expr] *= 1.0 / area_union[filter_expr]
-    return area_intersection
-
+    intersection = [
+        max(a[SVHN.TOP], b[SVHN.TOP]),
+        max(a[SVHN.LEFT], b[SVHN.LEFT]),
+        min(a[SVHN.BOTTOM], b[SVHN.BOTTOM]),
+        min(a[SVHN.RIGHT], b[SVHN.RIGHT]),
+    ]
+    if intersection[SVHN.RIGHT] <= intersection[SVHN.LEFT] or intersection[SVHN.BOTTOM] <= intersection[SVHN.TOP]:
+        return 0
+    return np_bbox_area(intersection) / float(np_bbox_area(a) + np_bbox_area(b) - np_bbox_area(intersection))
 
 
 def bbox_to_fast_rcnn(anchor, bbox):
@@ -216,7 +203,7 @@ def mask_reduce_sum_over_batch(values, mask):
 def correct_predictions(gold_classes, gold_bboxes, predicted_classes, predicted_bboxes, iou_threshold=0.5):
     if len(gold_classes) != len(predicted_classes):
         return False
-
+    
     used = [False] * len(gold_classes)
     for cls, bbox in zip(predicted_classes, predicted_bboxes):
         best = None
@@ -230,3 +217,6 @@ def correct_predictions(gold_classes, gold_bboxes, predicted_classes, predicted_
             return False
         used[best] = True
     return True
+
+
+

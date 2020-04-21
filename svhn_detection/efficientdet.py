@@ -28,15 +28,12 @@ class FastFusionWithActivation(tf.keras.layers.Layer):
 
     def call(self, x, training=True):
         # Resize the last input to match the rest
-        if x[-1].shape[1] == 2 * x[0].shape[1]: 
-            x[-1] = tf.nn.max_pool2d(x[-1], 2, 2, 'VALID')
-        elif x[-1].shape[1] * 2 == x[0].shape[1]:
-            x[-1] = tf.keras.backend.resize_images(x[-1], 2, 2, 'channels_last', interpolation='nearest')
-        else:
-            print(f'number of inputs: {len(x)}')
-            print(f'last input shape: {x[-1].shape}')
-            print(f'first input shape: {x[0].shape}')
-            raise ValueError('The shape of last input is invalid')
+        if x[-1].shape[1] > x[0].shape[1]: 
+            x[-1] = tf.nn.max_pool2d(x[-1], 2, 2, 'SAME')
+        elif x[-1].shape[1] < x[0].shape[1]:
+            new_shape = tf.shape(x[0])[1:-1]
+            x[-1] = tf.image.resize(x[-1], new_shape, method=tf.image.ResizeMethod.NEAREST_NEIGHBOR)
+            #x[-1] = tf.keras.backend.resize_images(x[-1], 2, 2, 'channels_last', interpolation='nearest')
         x[-1] = self.bnidentity(self.convidentity(x[-1], training=training), training=training) 
         w = tf.nn.relu(self.ff_weight)
         w_sum = tf.math.reduce_sum(w) + 0.0001 # epsilon from the paper
@@ -125,8 +122,19 @@ def EfficientDet(num_classes, anchors_per_level, pyramid_levels = 4, backbone = 
 
     input_tensor = tf.keras.layers.Input((input_size, input_size, 3), dtype=tf.float32)
     if backbone is None:
-        backbone = pretrained_efficientnet_b0(False, dynamic_shape=True)
-    x = backbone(input_tensor)[1:pyramid_levels + 1]
+        backbone = pretrained_efficientnet_b0(False, dynamic_shape=True, drop_connect_rate = 0.0)
+
+    # Fix the number of output feature maps
+    x = backbone(input_tensor)[1:-1][-pyramid_levels:]
+    while len(x) < pyramid_levels:
+        l = x[0]
+        l = tf.keras.Sequential([
+            tf.keras.layers.SeparableConv2D(fpn_channels, 3, strides=2, use_bias=False, padding='same'),
+            tf.keras.layers.BatchNormalization(),
+            tf.keras.layers.Activation(tf.nn.swish),
+        ])(l)
+        x.insert(0, l)
+
     x = list(map(partial(conv_change_filters, filters=fpn_channels), x))
     x = build_BiFPNLayer(x, fpn_channels, pyramid_levels = pyramid_levels)
     x = build_BiFPNLayer(x, fpn_channels, pyramid_levels = pyramid_levels)

@@ -11,79 +11,94 @@ from svhn_dataset import SVHN
 import utils
 import utils
 from functools import partial
-from data import create_data
+from data import create_data, NUM_TRAINING_SAMPLES, generate_evaluation_data, scale_input
 import os
 
 
 
-def parse_args(argv = []): 
-    argv = list(argv) + sys.argv
-    argstr = ' '.join(argv)
+def parse_args(argv = None, skip_name = False): 
+    all_argv = list(sys.argv)
+    if argv is not None: all_argv.extend(argv)
+    argstr = ' '.join(all_argv)
     parser = argparse.ArgumentParser()
     parser.add_argument('--batch_size', default=128, type=int)
     parser.add_argument('--image_size', default=128, type=int)
     parser.add_argument('--pyramid_levels', default=4, type=int)
-    parser.add_argument('--num_scales', default=1, type=int)
+    parser.add_argument('--num_scales', default=3, type=int)
     parser.add_argument('--learning_rate', default=0.16, type=float, help='0.16 in efficientdet')
     parser.add_argument('--weight_decay', default=4e-5, type=float, help='4e-5 in efficientdet')
     parser.add_argument('--momentum', default=0.9, type=float, help='0.9 in efficientdet')
     parser.add_argument('--grad_clip', default=1.0, type=float, help='not used in efficientdet')
-    parser.add_argument('--epochs', default=70, type=int)
+    parser.add_argument('--score_threshold', default=0.5, type=float)
+    parser.add_argument('--iou_threshold', default=0.2, type=float)
+    parser.add_argument('--epochs', default=100, type=int)
     parser.add_argument('--test', action='store_true')
     parser.add_argument('--disable_gpu', action='store_true')
-    parser.add_argument('--aug_zoom', default=0, type=float)
-    parser.add_argument('--aug_width_shift', default=0, type=float)
-    parser.add_argument('--aug_height_shift', default=0, type=float)
-    parser.add_argument('--aug_rotation', default=0, type=float)
-    parser.add_argument('--aug_vertical_fraction', default=1, type=float)
-    parser.add_argument('--aug_horizontal_fraction', default=1, type=float)
-    parser.add_argument('--aug_iou_threshold', default=0.6, type=float)
+    parser.add_argument('--augmentation', default='none', help='One of the following: none, retina, retina-rotate, autoaugment')
+
     if 'JOB' in os.environ:
         parser.add_argument('--name', default=os.environ['JOB'])
-    elif '--test' in argv:
+    elif '--test' in all_argv or skip_name:
         parser.add_argument('--name', default='test_test')
     else:
         parser.add_argument('--name', required=True)
 
-    args = parser.parse_args()
-    args.nowandb = False
+    if argv is not None: args = parser.parse_args(argv)
+    else: args = parser.parse_args()
+
     assert '_' in args.name
     args.project, args.name = args.name[:args.name.index('_')], args.name[args.name.index('_') + 1:]
     if args.test:
-        args.batch_size = 1
+        args.batch_size = 2
 
-    args.aspect_ratios = [(1.4, 0.7)]
-
-    if args.disable_gpu:
-        os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
-
+    args.aspect_ratios = [(1.4, 0.7), (1.0, 1.0)]
     return args, argstr
+
+
+def output_predictions(model, dataset = 'test', filename='svhn_classification_{dataset}.txt'):
+    correct = 0
+    total = 0
+    with open(filename.format(dataset = dataset), "w", encoding="utf-8") as out_file:
+        # TODO: Predict the digits and their bounding boxes on the test set.
+        dataset = getattr(SVHN(), dataset).map(SVHN.parse)
+        mapped_dataset = dataset.map(scale_input(model.args.image_size))
+        for x, xorig in zip(mapped_dataset.batch(1), dataset):
+            predicted_bboxes, scores, predicted_classes, valid = model.predict_on_batch(x)
+            num_valid = valid[0].numpy()
+            predicted_bboxes = predicted_bboxes[0, :num_valid, ...].numpy() 
+            predicted_classes = predicted_classes[0, :num_valid, ...].numpy()
+            scores = scores[0, :num_valid, ...].numpy()
+
+            predicted_bboxes = predicted_bboxes[scores > model.args.score_threshold]
+            predicted_classes = predicted_classes[scores > model.args.score_threshold]
+
+            transformed_bboxes = [] 
+            output = []
+            for label, bbox in zip(predicted_classes, predicted_bboxes):
+                output.append(label.astype(np.int32))
+                bbox_transformed = tf.cast(tf.shape(xorig['image'])[1], tf.float32).numpy() * bbox  / float(model.args.image_size)
+                transformed_bboxes.append(bbox_transformed.astype(np.int32))
+                output.extend(bbox_transformed.astype(np.int32))
+            print(*output, file=out_file)
+
+
+            correct += utils.correct_predictions(xorig["classes"].numpy(), xorig["bboxes"].numpy(),
+                    predicted_classes.astype(np.int32), transformed_bboxes)
+            total += 1
+    return correct / total
 
 
 class RetinaTrainer:
     def __init__(self, model, anchors, dataset, val_dataset, args):
-        """
-        val_dataset is a tuple (dev, eval_dev), where the dev part is dataset with 
-        mapped gold boxes to anchors, whereas eval_dev is the raw dataset which has
-        to use batch size 1
-        """
-        assert isinstance(val_dataset, tuple)
-        assert len(val_dataset) == 2
         self.model = model
         self.anchors = anchors
         self.args = args
-        self.dataset = dataset \
-            .batch(args.batch_size) \
-            .prefetch(4)
+        self.dataset = dataset
+        self.val_dataset = val_dataset
 
-        self.val_dataset = val_dataset[0] \
-            .batch(args.batch_size) \
-            .prefetch(4)
-
-        self.eval_dataset = val_dataset[1]
 
         # Prepare training
-        self._num_minibatches = self.dataset.reduce(0, lambda a,x: a + 1) # TOO SLOW
+        self._num_minibatches = self.dataset.reduce(0, lambda a,x: a + 1)
         self._huber_loss = tf.keras.losses.Huber(reduction = tf.losses.Reduction.NONE)
         self._epoch = tf.Variable(0, trainable=False, dtype=tf.int32)
         self._epoch_step = tf.Variable(0, trainable=False, dtype=tf.int32)
@@ -105,11 +120,15 @@ class RetinaTrainer:
             'val_score': tf.keras.metrics.Mean(),
         }
 
-        if not args.test:
+    def _start_wandb(self): 
+        if not self.args.test:
             # Use wandb
             import wandb
-            wandb.init(project=args.project, name=args.name)
-            wandb.config.update(args)
+            wandb.init(entity='kulhanek', 
+                    anonymous='allow',
+                    project=self.args.project,
+                    name=self.args.name)
+            wandb.config.update(self.args)
             self._wandb = wandb
 
     @tf.function
@@ -140,14 +159,15 @@ class RetinaTrainer:
         # TODO: compute mAP
         return (loss, regression_loss, class_loss)
 
-    #@tf.function TODO!!
-    def predict_on_batch(self, x, score_threshold = 0.05):
+    @tf.function
+    def predict_on_batch(self, x):
         class_pred, bbox_pred = self.model(x['image'], training=False)
         regression_pred = utils.bbox_from_fast_rcnn(self.anchors, bbox_pred) 
         regression_pred = tf.expand_dims(regression_pred, 2)
+        class_pred = tf.nn.sigmoid(class_pred)
         boxes, scores, classes, valid = tf.image.combined_non_max_suppression(
-            regression_pred, class_pred, 3, 5, score_threshold=score_threshold,
-            iou_threshold=0.5, clip_boxes=False) 
+            regression_pred, class_pred, 5, 5, score_threshold=0.05,
+            iou_threshold=self.args.iou_threshold, clip_boxes=False) 
 
         # Clip bounding boxes
         boxes = tf.clip_by_value(boxes, 0, self.args.image_size)
@@ -155,24 +175,35 @@ class RetinaTrainer:
 
     def predict(self, dataset = None):
         predictions = []
-        if dataset is None: dataset = self.eval_dataset
+        if dataset is None: dataset = self.val_dataset
         dataset = dataset.batch(self.args.batch_size).prefetch(4)
 
         for x in dataset: 
             for boxes, scores, classes, valid_detections in zip(*map(lambda x: x.numpy(), self.predict_on_batch(x))):
-                predictions.append((boxes[:valid_detections], classes[:valid_detections], scores[:valid_detections]))
+                boxes, scores, classes = boxes[:valid_detections], scores[:valid_detections], classes[:valid_detections]
+                predictions.append((boxes, classes, scores))
         return predictions
 
 
     def fit(self): 
+        self._start_wandb()
+        dataset = self.dataset.shuffle(3000) \
+            .batch(args.batch_size) \
+            .prefetch(4)
+
+        val_dataset = self.val_dataset \
+            .batch(args.batch_size) \
+            .prefetch(4)
+
         for epoch in range(self.args.epochs):
             self._epoch.assign(epoch)
+            log_append = dict()
             
             # Reset metrics
             for m in self.metrics.values(): m.reset_states()
 
             # Train on train dataset
-            for epoch_step, x in enumerate(self.dataset):
+            for epoch_step, x in enumerate(dataset):
                 self._epoch_step.assign(epoch_step)
                 loss, regression_loss, class_loss = self.train_on_batch(x)
                 self.metrics['loss'].update_state(loss)
@@ -180,34 +211,71 @@ class RetinaTrainer:
                 self.metrics['class_loss'].update_state(class_loss)
 
             # Run validation
-            for x in self.val_dataset:
+            for x in val_dataset:
                 loss, regression_loss, class_loss = self.evaluate_on_batch(x)
                 self.metrics['val_loss'].update_state(loss)
                 self.metrics['val_regression_loss'].update_state(regression_loss)
                 self.metrics['val_class_loss'].update_state(class_loss)
 
+
             # Compute straka's metric
-            predictions = self.predict()
-            for (boxes, classes, scores), gold in zip(predictions, self.eval_dataset):
-                gold_classes, gold_boxes = gold['class'].numpy(), gold['bbox'].numpy()
-                gold_filter = np.where(gold_classes > 0)
-                gold_classes = gold_classes[gold_filter]
-                gold_boxes = gold_boxes[gold_filter, :]
-                self.metrics['val_score'].update_state(utils.correct_predictions(gold_boxes, gold_classes, classes, boxes))
+            # TODO: vectorize Straka's metric
+            predictions = self.predict(self.val_dataset)
+            for (boxes, classes, scores), gold in zip(predictions, self.val_dataset):
+                gold_classes, gold_boxes = gold['gt-class'].numpy(), gold['gt-bbox'].numpy()
+                num_gt = gold['gt-length'].numpy()
+                gold_classes, gold_boxes = gold_classes[:num_gt], gold_boxes[:num_gt]
+                boxes, classes = boxes[scores > self.args.score_threshold], classes[scores > self.args.score_threshold]
+                self.metrics['val_score'].update_state(utils.correct_predictions(gold_classes, gold_boxes, classes, boxes))
+            
+            # mAP metric should be implemented here. Note, that predictions
+            # That are generated use transformed bb, i.e., the bb is scaled to args.image_size
+            # the original dataset has different image sizes and this needs to be taken care of 
+            # in the metric
 
             # Save model every 20 epochs
             if (epoch + 1) % 20 == 0:
                 self.save()
+                val_acc = output_predictions(self, 'dev')
+                output_predictions(self, 'test')
+                if hasattr(self, '_wandb'):
+                    self._wandb.save('svhn_classification_dev.txt')
+                    self._wandb.save('svhn_classification_test.txt')
                 print('model saved')
+                print(f'validation score: {val_acc * 100:.2f}')
+                log_append = dict(saved_val_score=val_acc, **log_append)
 
             # Log current values
-            self.log()
+            self.log(**log_append)
 
-    def log(self):
+    def evaluate(self, dataset = None):
+        if dataset is None: dataset = self.val_dataset
+        dataset = dataset \
+            .batch(self.args.batch_size) \
+            .prefetch(4)
+
+        # Reset metrics
+        for m in self.metrics.values(): m.reset_states()
+
+        # Run validation
+        for x in dataset:
+            loss, regression_loss, class_loss = self.evaluate_on_batch(x)
+            self.metrics['val_loss'].update_state(loss)
+            self.metrics['val_regression_loss'].update_state(regression_loss)
+            self.metrics['val_class_loss'].update_state(class_loss)
+        return dict(
+            loss = self.metrics.get('val_loss').result().numpy(),
+            regression_loss = self.metrics.get('val_regression_loss').result().numpy(),
+            class_loss = self.metrics.get('val_class_loss').result().numpy(),
+        )
+
+
+    def log(self, **kwargs):
         values = {k: v.result().numpy() for k, v in self.metrics.items()}
         values['epoch'] = self._epoch.numpy()
         values['lr'] = self.scheduler().numpy()
         values['wd'] = self.wd_scheduler().numpy()
+        values.update(kwargs)
         if hasattr(self, '_wandb'):
             # We will use wandb
             self._wandb.log(values, step=values['epoch'])
@@ -228,20 +296,18 @@ if __name__ == '__main__':
     # Prepare data
     num_classes = SVHN.LABELS
     pyramid_levels = args.pyramid_levels
-    smallest_stride = 2**(6 - pyramid_levels)
     anchors = utils.generate_anchors(pyramid_levels, args.image_size, 
-            first_feature_scale=smallest_stride, anchor_scale=float(smallest_stride),
             num_scales=args.num_scales, aspect_ratios=args.aspect_ratios)
 
-    train_dataset, dev_dataset, eval_dataset = create_data(args.batch_size, 
+    train_dataset, dev_dataset, _ = create_data(args.batch_size, 
             anchors, image_size = args.image_size,
-            test=args.test, args=args)
+            test=args.test, augmentation=args.augmentation)
 
     # Prepare network and trainer
     anchors_per_level = args.num_scales * len(args.aspect_ratios)
     network = efficientdet.EfficientDet(num_classes, anchors_per_level,
             input_size = args.image_size, pyramid_levels = pyramid_levels) 
-    model = RetinaTrainer(network, anchors, train_dataset, (dev_dataset, eval_dataset), args)
+    model = RetinaTrainer(network, anchors, train_dataset, dev_dataset, args)
 
     # Start training
     print(f'running command: {argstr}') 
