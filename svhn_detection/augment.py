@@ -4,7 +4,9 @@ from functools import partial
 import numpy as np
 from utils import bbox_iou
 
-def augment(img, bbox, width_shift=0, height_shift=0, zoom=0, rotation=0, vertical_fraction = 1.0, horizontal_fraction=1.0, iou_threshold = 0.6):
+def augment(img, bbox, classes,
+            width_shift=0, height_shift=0, zoom=0, rotation=0,
+            vertical_fraction = 1.0, horizontal_fraction=1.0, iou_threshold = 0.6):
 
     #print(bbox)
 
@@ -17,87 +19,92 @@ def augment(img, bbox, width_shift=0, height_shift=0, zoom=0, rotation=0, vertic
         zoom_range=zoom,
         rotation_range=rotation,
     )
-    transform = idg.get_random_transform(img.shape)
 
-    img_transformed = idg.apply_transform(img.numpy(), transform)
+    to_use = tf.convert_to_tensor([False])
 
-    rot_rad = np.deg2rad(transform['theta'])
-    center_tmp = tf.convert_to_tensor([img_height/2, img_width/2, img_height/2, img_width/2], dtype=tf.double)
-    centered = tf.cast(bbox, tf.double) - center_tmp
-    #print(centered)
-    lefttop = tf.stack([centered[:,SVHN.TOP], centered[:,SVHN.LEFT]], axis=1)
-    righttop = tf.stack([centered[:,SVHN.TOP], centered[:,SVHN.RIGHT]], axis=1)
-    leftbottom = tf.stack([centered[:,SVHN.BOTTOM], centered[:,SVHN.LEFT]], axis=1)
-    rightbottom = tf.stack([centered[:,SVHN.BOTTOM], centered[:,SVHN.RIGHT]], axis=1)
+    while bool(tf.reduce_any(to_use)) is False:
+        transform = idg.get_random_transform(img.shape)
 
-    new_top_vals = [
-        lefttop[:,1] * np.sin(rot_rad) + lefttop[:,0] * np.cos(rot_rad),
-        righttop[:,1] * np.sin(rot_rad) + righttop[:,0] * np.cos(rot_rad)
-    ]
-    new_top_min = tf.minimum(*new_top_vals)
-    new_top_max = tf.maximum(*new_top_vals)
-    new_top = new_top_max - vertical_fraction * (new_top_max - new_top_min)
-    new_bottom_vals = [
-        leftbottom[:,1] * np.sin(rot_rad) + leftbottom[:,0] * np.cos(rot_rad),
-        rightbottom[:,1] * np.sin(rot_rad) + rightbottom[:,0] * np.cos(rot_rad)
-    ]
-    new_bottom_min = tf.minimum(*new_bottom_vals)
-    new_bottom_max = tf.maximum(*new_bottom_vals)
-    new_bottom = new_bottom_min + vertical_fraction * (new_bottom_max - new_bottom_min)
+        img_transformed = idg.apply_transform(img.numpy(), transform)
 
-    new_left_vals = [
-        lefttop[:,1] * np.cos(rot_rad) - lefttop[:,0] * np.sin(rot_rad),
-        leftbottom[:,1] * np.cos(rot_rad) - leftbottom[:,0] * np.sin(rot_rad)
-    ]
-    new_left_min = tf.minimum(*new_left_vals)
-    new_left_max = tf.maximum(*new_left_vals)
-    new_left = new_left_max - horizontal_fraction * (new_left_max - new_left_min)
-    new_right_vals = [
-        righttop[:,1] * np.cos(rot_rad) - righttop[:,0] * np.sin(rot_rad),
-        rightbottom[:,1] * np.cos(rot_rad) - rightbottom[:,0] * np.sin(rot_rad)
-    ]
-    new_right_min = tf.minimum(*new_right_vals)
-    new_right_max = tf.maximum(*new_right_vals)
-    new_right = new_right_min + horizontal_fraction * (new_right_max - new_right_min)
+        rot_rad = np.deg2rad(transform['theta'])
+        center_tmp = tf.convert_to_tensor([img_height/2, img_width/2, img_height/2, img_width/2], dtype=tf.double)
+        centered = tf.cast(bbox, tf.double) - center_tmp
+        #print(centered)
+        lefttop = tf.stack([centered[:,SVHN.TOP], centered[:,SVHN.LEFT]], axis=1)
+        righttop = tf.stack([centered[:,SVHN.TOP], centered[:,SVHN.RIGHT]], axis=1)
+        leftbottom = tf.stack([centered[:,SVHN.BOTTOM], centered[:,SVHN.LEFT]], axis=1)
+        rightbottom = tf.stack([centered[:,SVHN.BOTTOM], centered[:,SVHN.RIGHT]], axis=1)
 
-    rotate_box = tf.stack([
-        new_top,
-        new_left,
-        new_bottom,
-        new_right,
-    ], axis=1)
-    #print(rotate_box)
+        new_top_vals = [
+            lefttop[:,1] * np.sin(rot_rad) + lefttop[:,0] * np.cos(rot_rad),
+            righttop[:,1] * np.sin(rot_rad) + righttop[:,0] * np.cos(rot_rad)
+        ]
+        new_top_min = tf.minimum(*new_top_vals)
+        new_top_max = tf.maximum(*new_top_vals)
+        new_top = new_top_max - vertical_fraction * (new_top_max - new_top_min)
+        new_bottom_vals = [
+            leftbottom[:,1] * np.sin(rot_rad) + leftbottom[:,0] * np.cos(rot_rad),
+            rightbottom[:,1] * np.sin(rot_rad) + rightbottom[:,0] * np.cos(rot_rad)
+        ]
+        new_bottom_min = tf.minimum(*new_bottom_vals)
+        new_bottom_max = tf.maximum(*new_bottom_vals)
+        new_bottom = new_bottom_min + vertical_fraction * (new_bottom_max - new_bottom_min)
 
-    translate_tmp = tf.convert_to_tensor([-transform['tx'], -transform['ty'], -transform['tx'], -transform['ty']], dtype=tf.double)
-    translate_bbox = tf.add(rotate_box, translate_tmp)
-    #print(translate_bbox)
+        new_left_vals = [
+            lefttop[:,1] * np.cos(rot_rad) - lefttop[:,0] * np.sin(rot_rad),
+            leftbottom[:,1] * np.cos(rot_rad) - leftbottom[:,0] * np.sin(rot_rad)
+        ]
+        new_left_min = tf.minimum(*new_left_vals)
+        new_left_max = tf.maximum(*new_left_vals)
+        new_left = new_left_max - horizontal_fraction * (new_left_max - new_left_min)
+        new_right_vals = [
+            righttop[:,1] * np.cos(rot_rad) - righttop[:,0] * np.sin(rot_rad),
+            rightbottom[:,1] * np.cos(rot_rad) - rightbottom[:,0] * np.sin(rot_rad)
+        ]
+        new_right_min = tf.minimum(*new_right_vals)
+        new_right_max = tf.maximum(*new_right_vals)
+        new_right = new_right_min + horizontal_fraction * (new_right_max - new_right_min)
 
-    zoom_tmp = tf.convert_to_tensor([transform['zx'], transform['zy'], transform['zx'], transform['zy']], dtype=tf.double)
-    #print(translate_bbox / zoom_tmp)
-    zoom_bbox = tf.cast(translate_bbox / zoom_tmp + center_tmp, tf.int64)
-    #print(zoom_bbox)
+        rotate_box = tf.stack([
+            new_top,
+            new_left,
+            new_bottom,
+            new_right,
+        ], axis=1)
+        #print(rotate_box)
 
-    aligned_boxes = tf.stack([
-        tf.maximum(zoom_bbox[:,0], 0),   #top
-        tf.maximum(zoom_bbox[:,1], 0), # left
-        tf.minimum(zoom_bbox[:,2], img_height), # bottom
-        tf.minimum(zoom_bbox[:,3], img_width), # right
-    ], axis=1)
-    iou = bbox_iou(tf.cast(aligned_boxes, tf.double), tf.cast(zoom_bbox, tf.double))
-    to_use = tf.linalg.diag_part(iou) > iou_threshold
+        translate_tmp = tf.convert_to_tensor([-transform['tx'], -transform['ty'], -transform['tx'], -transform['ty']], dtype=tf.double)
+        translate_bbox = tf.add(rotate_box, translate_tmp)
+        #print(translate_bbox)
 
-    return img_transformed, aligned_boxes[to_use]
+        zoom_tmp = tf.convert_to_tensor([transform['zx'], transform['zy'], transform['zx'], transform['zy']], dtype=tf.double)
+        #print(translate_bbox / zoom_tmp)
+        zoom_bbox = tf.cast(translate_bbox / zoom_tmp + center_tmp, tf.int64)
+        #print(zoom_bbox)
+
+        aligned_boxes = tf.stack([
+            tf.maximum(zoom_bbox[:,0], 0), #top
+            tf.maximum(zoom_bbox[:,1], 0), # left
+            tf.minimum(zoom_bbox[:,2], img_height), # bottom
+            tf.minimum(zoom_bbox[:,3], img_width), # right
+        ], axis=1)
+        iou = bbox_iou(tf.cast(aligned_boxes, tf.double), tf.cast(zoom_bbox, tf.double))
+        to_use = tf.linalg.diag_part(iou) > iou_threshold
+
+    return img_transformed, aligned_boxes[to_use], classes[to_use]
 
 
 def build_augment_map(use_rotations = True):
-    def augment_map(bboxes, img):
+    def augment_map(bboxes, img, classes):
         shift = 0.2
         rotation = 15
         zoom = 0.2
-        return augment_py(img, bboxes, width_shift=shift,
+        return augment(img, bboxes, classes, width_shift=shift,
                 height_shift=shift, zoom=zoom,
-                rotation=rotation if use_rotations else 0, vertical_fraction=0.6,
-                horizontal_fraction=0.9, iou_threshold=0.6)
+                rotation=rotation if use_rotations else 0,
+                vertical_fraction=0.6, horizontal_fraction=0.9,
+                iou_threshold=0.6)
     return augment_map
 
 
@@ -109,12 +116,12 @@ def build_augment(use_rotations = True):
         bboxes, image, classes = x['bboxes'], x['image'], x['classes']
         result = tf.py_function(
             augment_map,
-            inp=[bboxes, image],
-            Tout=[tf.int64, tf.int64]
+            inp=[bboxes, image, classes],
+            Tout=[tf.int64, tf.int64, tf.int64]
         )
         return {
             'bboxes': tf.cast(result[1], tf.float32),
             'image': tf.cast(result[0], tf.float32),
-            'classes': classes
+            'classes': result[2]
         }
     return augment

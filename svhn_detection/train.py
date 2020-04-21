@@ -50,6 +50,8 @@ def parse_args(argv = None, skip_name = False):
     args.project, args.name = args.name[:args.name.index('_')], args.name[args.name.index('_') + 1:]
     if args.test:
         args.batch_size = 2
+    if args.disable_gpu:
+        os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 
     args.aspect_ratios = [(1.4, 0.7), (1.0, 1.0)]
     return args, argstr

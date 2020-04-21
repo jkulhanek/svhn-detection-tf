@@ -43,15 +43,6 @@ def generate_evaluation_data(x):
     orig_bboxes = tf.cast(x['bboxes'], tf.float32)
     return { 'image':x['image'], 'bbox': orig_bboxes, 'class': orig_classes }
 
-def augment_map(bboxes, img, args):
-    return augment(img, bboxes,
-                   width_shift=args.aug_width_shift, height_shift=args.aug_height_shift,
-                   zoom=args.aug_zoom,
-                   rotation=args.aug_rotation,
-                   vertical_fraction=args.aug_vertical_fraction,
-                   horizontal_fraction=args.aug_horizontal_fraction,
-                   iou_threshold=args.aug_iou_threshold)
-
 def create_data(batch_size, anchors, image_size, test=False, augmentation='none'):
     assert test == False or batch_size <= 8 
     assert augmentation in ['none','retina','retina-rotate']
