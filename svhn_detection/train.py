@@ -34,6 +34,7 @@ def parse_args(argv = None, skip_name = False):
     parser.add_argument('--score-threshold', default=0.5, type=float)
     parser.add_argument('--iou-threshold', default=0.2, type=float)
     parser.add_argument('--epochs', default=100, type=int)
+    parser.add_argument('--efficientdet-filters', default=64, type=int)
     parser.add_argument('--test', action='store_true')
     parser.add_argument('--disable-gpu', action='store_true')
     parser.add_argument('--aspect-ratios-y', type=float, default=[1.4, 1.0], nargs='+') 
@@ -314,7 +315,8 @@ if __name__ == '__main__':
     # Prepare network and trainer
     anchors_per_level = args.num_scales * len(args.aspect_ratios)
     network = efficientdet.EfficientDet(num_classes, anchors_per_level,
-            input_size = args.image_size, pyramid_levels = pyramid_levels) 
+            input_size = args.image_size, pyramid_levels = pyramid_levels,
+            filters=args.efficientdet_filters) 
     model = RetinaTrainer(network, anchors, train_dataset, dev_dataset, args)
 
     # Start training
