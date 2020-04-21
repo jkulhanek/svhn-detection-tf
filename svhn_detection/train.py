@@ -23,19 +23,20 @@ def parse_args(argv = None, skip_name = False):
     if argv is not None: all_argv.extend(argv)
     argstr = ' '.join(all_argv)
     parser = argparse.ArgumentParser()
-    parser.add_argument('--batch_size', default=128, type=int)
-    parser.add_argument('--image_size', default=128, type=int)
-    parser.add_argument('--pyramid_levels', default=4, type=int)
-    parser.add_argument('--num_scales', default=3, type=int)
-    parser.add_argument('--learning_rate', default=0.16, type=float, help='0.16 in efficientdet')
-    parser.add_argument('--weight_decay', default=4e-5, type=float, help='4e-5 in efficientdet')
+    parser.add_argument('--batch-size', default=128, type=int)
+    parser.add_argument('--image-size', default=128, type=int)
+    parser.add_argument('--pyramid-levels', default=4, type=int)
+    parser.add_argument('--num-scales', default=3, type=int)
+    parser.add_argument('--learning-rate', default=0.16, type=float, help='0.16 in efficientdet')
+    parser.add_argument('--weight-decay', default=4e-5, type=float, help='4e-5 in efficientdet')
     parser.add_argument('--momentum', default=0.9, type=float, help='0.9 in efficientdet')
-    parser.add_argument('--grad_clip', default=1.0, type=float, help='not used in efficientdet')
-    parser.add_argument('--score_threshold', default=0.5, type=float)
-    parser.add_argument('--iou_threshold', default=0.2, type=float)
+    parser.add_argument('--grad-clip', default=1.0, type=float, help='not used in efficientdet')
+    parser.add_argument('--score-threshold', default=0.5, type=float)
+    parser.add_argument('--iou-threshold', default=0.2, type=float)
     parser.add_argument('--epochs', default=100, type=int)
     parser.add_argument('--test', action='store_true')
-    parser.add_argument('--disable_gpu', action='store_true')
+    parser.add_argument('--disable-gpu', action='store_true')
+    parser.add_argument('--aspect-ratios-y', type=float, default=[1.4, 1.0], nargs='+') 
     parser.add_argument('--augmentation', default='none', help='One of the following: none, retina, retina-rotate, autoaugment')
     if 'JOB' in os.environ:
         parser.add_argument('--name', default=os.environ['JOB'])
@@ -52,7 +53,8 @@ def parse_args(argv = None, skip_name = False):
     if args.test:
         args.batch_size = 2
 
-    args.aspect_ratios = [(1.4, 0.7), (1.0, 1.0)]
+    args.aspect_ratios = [(y, round(1 / y, 1)) for y in args.aspect_ratios_y]
+    delattr(args, 'aspect_ratios_y')
     return args, argstr
 
 
