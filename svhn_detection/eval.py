@@ -3,6 +3,7 @@ from svhn_dataset import SVHN
 from train import RetinaTrainer, parse_args, output_predictions
 import efficientdet
 import utils
+from coco_eval import CocoEvaluation
 
 
 if __name__ == '__main__':
@@ -26,6 +27,10 @@ if __name__ == '__main__':
 
     # Load weights
     model.model.load_weights('model.h5')
+    
+    coco_metric = CocoEvaluation(dev_dataset)
+    predictions = model.predict(dev_dataset)
+    coco_metric.evaluate(predictions)
 
     # Export dev and test predictions
     dev_acc = output_predictions(model, 'dev') 

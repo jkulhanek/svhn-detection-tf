@@ -2,6 +2,7 @@
 Object detection on SVHN dataset in tensorflow using efficientdet
 
 ## Getting Started
+First of all you need to call `pip install git+https://github.com/cocodataset/cocoapi.git#subdirectory=PythonAPI` since there is no official PiPy version.
 Please verify the validity of your changes before pushing by running `$ python train.py --test`.
 
 #### Sanity Checks

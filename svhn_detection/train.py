@@ -13,6 +13,8 @@ import utils
 from functools import partial
 from data import create_data, NUM_TRAINING_SAMPLES, generate_evaluation_data, scale_input
 import os
+from coco_eval import CocoEvaluation
+
 
 
 
@@ -94,6 +96,8 @@ class RetinaTrainer:
         self.args = args
         self.dataset = dataset
         self.val_dataset = val_dataset
+
+        self.coco_metric = CocoEvaluation(val_dataset)
 
 
         # Prepare training
@@ -231,6 +235,9 @@ class RetinaTrainer:
             # That are generated use transformed bb, i.e., the bb is scaled to args.image_size
             # the original dataset has different image sizes and this needs to be taken care of 
             # in the metric
+            predictions = self.predict(self.val_dataset)            
+            self.coco_metric.evaluate(predictions)
+
 
             # Save model every 20 epochs
             if (epoch + 1) % 20 == 0:
