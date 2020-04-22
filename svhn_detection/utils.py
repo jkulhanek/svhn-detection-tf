@@ -147,7 +147,7 @@ def bboxes_training(anchors, gold_classes, gold_bboxes, iou_threshold = 0.5, bac
     matches, mask, anchor_mask = compute_matches(iou_table, iou_threshold, background_iou_threshold, force_gold_match)
     anchor_classes = tf.where(mask, tf.gather_nd(gold_classes, matches[:,tf.newaxis]) + 1, anchor_classes)
     anchor_bboxes = tf.where(mask[:, tf.newaxis], 
-        bbox_to_fast_rcnn(anchors, tf.gather_nd(gold_bboxes, matches[:, tf.newaxis])), 
+        tf.gather_nd(gold_bboxes, matches[:, tf.newaxis]), 
         tf.zeros((num_anchors, 4), tf.float32))
     return anchor_classes, anchor_bboxes, anchor_mask
 

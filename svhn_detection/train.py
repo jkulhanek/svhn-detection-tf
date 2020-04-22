@@ -105,7 +105,8 @@ class RetinaTrainer:
 
         # Prepare training
         self._num_minibatches = self.dataset.reduce(0, lambda a,x: a + 1)
-        self._huber_loss = tf.keras.losses.Huber(reduction = tf.losses.Reduction.NONE)
+        # self._huber_loss = tf.keras.losses.Huber(reduction = tf.losses.Reduction.NONE)
+        self._regression_loss = tfa.losses.GIoULoss(reduction = tf.losses.Reduction.NONE)
         self._epoch = tf.Variable(0, trainable=False, dtype=tf.int32)
         self._epoch_step = tf.Variable(0, trainable=False, dtype=tf.int32)
         self._grad_clip = args.grad_clip
@@ -144,7 +145,8 @@ class RetinaTrainer:
             class_g, bbox_g, c_mask, r_mask = x['class'], x['bbox'], x['class_mask'], x['regression_mask']
             class_loss = tfa.losses.sigmoid_focal_crossentropy(class_g, class_pred, from_logits=True, alpha=0.25, gamma=1.5) 
             class_loss = utils.mask_reduce_sum_over_batch(class_loss, c_mask)
-            regression_loss = self._huber_loss(bbox_g, bbox_pred)
+            bbox_pred_transformed = utils.bbox_from_fast_rcnn(self.anchors, bbox_pred)
+            regression_loss = self._regression_loss(bbox_g, bbox_pred_transformed)
             regression_loss = utils.mask_reduce_sum_over_batch(regression_loss, r_mask)
             loss = class_loss + regression_loss
         grads = tp.gradient(loss, self.model.trainable_variables)
@@ -158,7 +160,8 @@ class RetinaTrainer:
         class_g, bbox_g, c_mask, r_mask = x['class'], x['bbox'], x['class_mask'], x['regression_mask']
         class_loss = tfa.losses.sigmoid_focal_crossentropy(class_g, class_pred, from_logits=True, alpha=0.25, gamma=1.5) 
         class_loss = utils.mask_reduce_sum_over_batch(class_loss, c_mask)
-        regression_loss = self._huber_loss(bbox_g, bbox_pred)
+        bbox_pred_transformed = utils.bbox_from_fast_rcnn(self.anchors, bbox_pred)
+        regression_loss = self._regression_loss(bbox_g, bbox_pred_transformed)
         regression_loss = utils.mask_reduce_sum_over_batch(regression_loss, r_mask)
         loss = class_loss + regression_loss
 
