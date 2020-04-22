@@ -142,7 +142,7 @@ class RetinaTrainer:
         with tf.GradientTape() as tp:
             class_pred, bbox_pred = self.model(x['image'], training=True)
             class_g, bbox_g, c_mask, r_mask = x['class'], x['bbox'], x['class_mask'], x['regression_mask']
-            class_loss = tfa.losses.sigmoid_focal_crossentropy(class_g, class_pred, from_logits=True) 
+            class_loss = tfa.losses.sigmoid_focal_crossentropy(class_g, class_pred, from_logits=True, alpha=0.25, gamma=1.5) 
             class_loss = utils.mask_reduce_sum_over_batch(class_loss, c_mask)
             regression_loss = self._huber_loss(bbox_g, bbox_pred)
             regression_loss = utils.mask_reduce_sum_over_batch(regression_loss, r_mask)
@@ -156,7 +156,7 @@ class RetinaTrainer:
     def evaluate_on_batch(self, x):
         class_pred, bbox_pred = self.model(x['image'], training=False)
         class_g, bbox_g, c_mask, r_mask = x['class'], x['bbox'], x['class_mask'], x['regression_mask']
-        class_loss = tfa.losses.sigmoid_focal_crossentropy(class_g, class_pred, from_logits=True) 
+        class_loss = tfa.losses.sigmoid_focal_crossentropy(class_g, class_pred, from_logits=True, alpha=0.25, gamma=1.5) 
         class_loss = utils.mask_reduce_sum_over_batch(class_loss, c_mask)
         regression_loss = self._huber_loss(bbox_g, bbox_pred)
         regression_loss = utils.mask_reduce_sum_over_batch(regression_loss, r_mask)
@@ -172,7 +172,7 @@ class RetinaTrainer:
         regression_pred = tf.expand_dims(regression_pred, 2)
         class_pred = tf.nn.sigmoid(class_pred)
         boxes, scores, classes, valid = tf.image.combined_non_max_suppression(
-            regression_pred, class_pred, 5, 5, score_threshold=0.05,
+            regression_pred, class_pred, 5, 5, score_threshold=0.2,#0.05,
             iou_threshold=self.args.iou_threshold, clip_boxes=False) 
 
         # Clip bounding boxes
