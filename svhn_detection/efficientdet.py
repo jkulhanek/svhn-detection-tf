@@ -117,8 +117,8 @@ def BoxHead(filters, num_anchors):
 
 
 
-def EfficientDet(num_classes, anchors_per_level, pyramid_levels = 4, backbone = None, input_size=224):
-    fpn_channels = 64
+def EfficientDet(num_classes, anchors_per_level, pyramid_levels = 4, backbone = None, input_size=224, filters = 64):
+    fpn_channels = filters
 
     input_tensor = tf.keras.layers.Input((input_size, input_size, 3), dtype=tf.float32)
     if backbone is None:

@@ -131,3 +131,5 @@ dmypy.json
 efficientnet-*.h5
 data/
 wandb/
+model.h5
+svhn_detection/svhn_classification_*.txt

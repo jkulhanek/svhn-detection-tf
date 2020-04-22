@@ -13,6 +13,8 @@ import utils
 from functools import partial
 from data import create_data, NUM_TRAINING_SAMPLES, generate_evaluation_data, scale_input
 import os
+from coco_eval import CocoEvaluation
+
 
 
 
@@ -21,21 +23,24 @@ def parse_args(argv = None, skip_name = False):
     if argv is not None: all_argv.extend(argv)
     argstr = ' '.join(all_argv)
     parser = argparse.ArgumentParser()
-    parser.add_argument('--batch_size', default=128, type=int)
-    parser.add_argument('--image_size', default=128, type=int)
-    parser.add_argument('--pyramid_levels', default=4, type=int)
-    parser.add_argument('--num_scales', default=3, type=int)
-    parser.add_argument('--learning_rate', default=0.16, type=float, help='0.16 in efficientdet')
-    parser.add_argument('--weight_decay', default=4e-5, type=float, help='4e-5 in efficientdet')
+    parser.add_argument('--batch-size', default=128, type=int)
+    parser.add_argument('--image-size', default=128, type=int)
+    parser.add_argument('--pyramid-levels', default=4, type=int)
+    parser.add_argument('--num-scales', default=3, type=int)
+    parser.add_argument('--learning-rate', default=0.16, type=float, help='0.16 in efficientdet')
+    parser.add_argument('--weight-decay', default=4e-5, type=float, help='4e-5 in efficientdet')
     parser.add_argument('--momentum', default=0.9, type=float, help='0.9 in efficientdet')
-    parser.add_argument('--grad_clip', default=1.0, type=float, help='not used in efficientdet')
-    parser.add_argument('--score_threshold', default=0.5, type=float)
-    parser.add_argument('--iou_threshold', default=0.2, type=float)
+    parser.add_argument('--grad-clip', default=1.0, type=float, help='not used in efficientdet')
+    parser.add_argument('--score-threshold', default=0.5, type=float)
+    parser.add_argument('--iou-threshold', default=0.2, type=float)
     parser.add_argument('--epochs', default=100, type=int)
+    parser.add_argument('--efficientdet-filters', default=64, type=int)
     parser.add_argument('--test', action='store_true')
-    parser.add_argument('--disable_gpu', action='store_true')
     parser.add_argument('--augmentation', type=str, choices=['none', 'retina', 'retina-rotate', 'autoaugment-v0', 'autoaugment-v1', 'autoaugment-v2', 'autoaugment-v3'],
                         default='none', help='One of the following: none, retina, retina-rotate, autoaugment-v0, ..., autoaugment-v3')
+    parser.add_argument('--aspect-ratios-y', type=float, default=[1.4, 1.0], nargs='+') 
+
+    # Autoaugment params 
     parser.add_argument('--cutout_max_pad_fraction', type=float, default=0.75, help='0.75 in efficientden')
     parser.add_argument('--cutout_bbox_replace_with_mean', action='store_true', help='False in efficientden')
     parser.add_argument('--cutout_const', type=int, default=20, help='100 in efficientden')
@@ -58,7 +63,8 @@ def parse_args(argv = None, skip_name = False):
     if args.test:
         args.batch_size = 2
 
-    args.aspect_ratios = [(1.4, 0.7), (1.0, 1.0)]
+    args.aspect_ratios = [(y, round(1 / y, 1)) for y in args.aspect_ratios_y]
+    delattr(args, 'aspect_ratios_y')
     return args, argstr
 
 
@@ -103,6 +109,8 @@ class RetinaTrainer:
         self.dataset = dataset
         self.val_dataset = val_dataset
 
+        self.coco_metric = CocoEvaluation(val_dataset)
+
 
         # Prepare training
         self._num_minibatches = self.dataset.reduce(0, lambda a,x: a + 1)
@@ -143,7 +151,7 @@ class RetinaTrainer:
         with tf.GradientTape() as tp:
             class_pred, bbox_pred = self.model(x['image'], training=True)
             class_g, bbox_g, c_mask, r_mask = x['class'], x['bbox'], x['class_mask'], x['regression_mask']
-            class_loss = tfa.losses.sigmoid_focal_crossentropy(class_g, class_pred, from_logits=True) 
+            class_loss = tfa.losses.sigmoid_focal_crossentropy(class_g, class_pred, from_logits=True, alpha=0.25, gamma=1.5) 
             class_loss = utils.mask_reduce_sum_over_batch(class_loss, c_mask)
             regression_loss = self._huber_loss(bbox_g, bbox_pred)
             regression_loss = utils.mask_reduce_sum_over_batch(regression_loss, r_mask)
@@ -157,7 +165,7 @@ class RetinaTrainer:
     def evaluate_on_batch(self, x):
         class_pred, bbox_pred = self.model(x['image'], training=False)
         class_g, bbox_g, c_mask, r_mask = x['class'], x['bbox'], x['class_mask'], x['regression_mask']
-        class_loss = tfa.losses.sigmoid_focal_crossentropy(class_g, class_pred, from_logits=True) 
+        class_loss = tfa.losses.sigmoid_focal_crossentropy(class_g, class_pred, from_logits=True, alpha=0.25, gamma=1.5) 
         class_loss = utils.mask_reduce_sum_over_batch(class_loss, c_mask)
         regression_loss = self._huber_loss(bbox_g, bbox_pred)
         regression_loss = utils.mask_reduce_sum_over_batch(regression_loss, r_mask)
@@ -173,7 +181,7 @@ class RetinaTrainer:
         regression_pred = tf.expand_dims(regression_pred, 2)
         class_pred = tf.nn.sigmoid(class_pred)
         boxes, scores, classes, valid = tf.image.combined_non_max_suppression(
-            regression_pred, class_pred, 5, 5, score_threshold=0.05,
+            regression_pred, class_pred, 5, 5, score_threshold=0.2,#0.05,
             iou_threshold=self.args.iou_threshold, clip_boxes=False) 
 
         # Clip bounding boxes
@@ -239,6 +247,9 @@ class RetinaTrainer:
             # That are generated use transformed bb, i.e., the bb is scaled to args.image_size
             # the original dataset has different image sizes and this needs to be taken care of 
             # in the metric
+            predictions = self.predict(self.val_dataset)            
+            self.coco_metric.evaluate(predictions)
+
 
             # Save model every 20 epochs
             if (epoch + 1) % 20 == 0:
@@ -314,7 +325,8 @@ if __name__ == '__main__':
     # Prepare network and trainer
     anchors_per_level = args.num_scales * len(args.aspect_ratios)
     network = efficientdet.EfficientDet(num_classes, anchors_per_level,
-            input_size = args.image_size, pyramid_levels = pyramid_levels) 
+            input_size = args.image_size, pyramid_levels = pyramid_levels,
+            filters=args.efficientdet_filters) 
     model = RetinaTrainer(network, anchors, train_dataset, dev_dataset, args)
 
     # Start training
