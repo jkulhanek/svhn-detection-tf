@@ -285,6 +285,10 @@ class RetinaTrainer:
         values['lr'] = self.scheduler().numpy()
         values['wd'] = self.wd_scheduler().numpy()
         values.update(kwargs)
+
+        for key, value in self.coco_metric.get_last_stats().items():
+            values[key] = value 
+            
         if hasattr(self, '_wandb'):
             # We will use wandb
             self._wandb.log(values, step=values['epoch'])

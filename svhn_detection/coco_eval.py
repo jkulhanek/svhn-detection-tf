@@ -6,6 +6,8 @@ from svhn_dataset import SVHN
 class CocoEvaluation():
     def __init__(self, golden_dataset):
         self.golden_coco = self.create_coco_from_dataset(golden_dataset)
+        self.stats = []
+
 
     def create_annotations(self, dataset):
         annotations = []
@@ -77,6 +79,7 @@ class CocoEvaluation():
     def evaluate(self, predictions):
         detections = self.create_coco_from_predictions(predictions)
         if len(detections) == 0:
+            self.stats = []
             return 
             
         coco_dt = self.golden_coco.loadRes(detections)
@@ -84,6 +87,25 @@ class CocoEvaluation():
         coco_eval.evaluate()
         coco_eval.accumulate()
         coco_eval.summarize()
+        self.stats = coco_eval.stats
+
+    def get_last_stats(self):
+        if len(self.stats) == 0:
+            self.stats = [-1]*12
+        return {
+            'AP | IoU=0.50:0.95 | area=all | maxDets=100' : self.stats[0],
+            'AP | IoU=0.50 | area=all | maxDets=100' : self.stats[1],
+            'AP | IoU=0.75 | area=all | maxDets=100' : self.stats[2],
+            'AP | IoU=0.50:0.95 | area=small | maxDets=100' : self.stats[3],
+            'AP | IoU=0.50:0.95 | area=medium | maxDets=100' : self.stats[4],
+            'AP | IoU=0.50:0.95 | area=large | maxDets=100' : self.stats[5],
+            'AR | IoU=0.50:0.95 | area=all | maxDets=1' : self.stats[6],
+            'AR | IoU=0.50:0.95 | area=all | maxDets=10' : self.stats[7],
+            'AR | IoU=0.50:0.95 | area=all | maxDets=100' : self.stats[8],
+            'AR | IoU=0.50:0.95 | area=small | maxDets=100' : self.stats[9],
+            'AR | IoU=0.50:0.95 | area=medium | maxDets=100' : self.stats[10],
+            'AR | IoU=0.50:0.95 | area=large | maxDets=100' : self.stats[11],
+        }
 
 
         
