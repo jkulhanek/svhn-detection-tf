@@ -117,7 +117,7 @@ def BoxHead(filters, num_anchors):
 
 
 
-def EfficientDet(num_classes, anchors_per_level, pyramid_levels = 4, backbone = None, input_size=224, filters = 64):
+def EfficientDet(num_classes, anchors_per_level, pyramid_levels = 4, backbone = None, input_size=224, filters = 64, num_layers = 3):
     fpn_channels = filters
 
     input_tensor = tf.keras.layers.Input((input_size, input_size, 3), dtype=tf.float32)
@@ -136,9 +136,8 @@ def EfficientDet(num_classes, anchors_per_level, pyramid_levels = 4, backbone = 
         x.insert(0, l)
 
     x = list(map(partial(conv_change_filters, filters=fpn_channels), x))
-    x = build_BiFPNLayer(x, fpn_channels, pyramid_levels = pyramid_levels)
-    x = build_BiFPNLayer(x, fpn_channels, pyramid_levels = pyramid_levels)
-    x = build_BiFPNLayer(x, fpn_channels, pyramid_levels = pyramid_levels) 
+    for _ in range(num_layers):
+        x = build_BiFPNLayer(x, fpn_channels, pyramid_levels = pyramid_levels)
     class_predict = list(map(DetectionHead(fpn_channels, num_classes, anchors_per_level), x))
     class_predict = tf.keras.layers.Concatenate(axis=1, name='class')(class_predict)
     box_predict = list(map(BoxHead(fpn_channels, anchors_per_level), x))
