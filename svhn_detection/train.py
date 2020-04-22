@@ -39,6 +39,7 @@ def parse_args(argv = None, skip_name = False):
     parser.add_argument('--disable-gpu', action='store_true')
     parser.add_argument('--aspect-ratios-y', type=float, default=[1.4, 1.0], nargs='+') 
     parser.add_argument('--augmentation', default='none', help='One of the following: none, retina, retina-rotate, autoaugment')
+    parser.add_argument('--regression-loss', default='huber', help='One of the following: huber, giou', choices=['huber', 'giou'])
     if 'JOB' in os.environ:
         parser.add_argument('--name', default=os.environ['JOB'])
     elif '--test' in all_argv or skip_name:
@@ -92,6 +93,7 @@ def output_predictions(model, dataset = 'test', filename='svhn_classification_{d
     return correct / total
 
 
+
 class RetinaTrainer:
     def __init__(self, model, anchors, dataset, val_dataset, args):
         self.model = model
@@ -105,8 +107,13 @@ class RetinaTrainer:
 
         # Prepare training
         self._num_minibatches = self.dataset.reduce(0, lambda a,x: a + 1)
-        # self._huber_loss = tf.keras.losses.Huber(reduction = tf.losses.Reduction.NONE)
-        self._regression_loss = tfa.losses.GIoULoss(reduction = tf.losses.Reduction.NONE)
+        if args.regression_loss == 'huber':
+            self._regression_loss = tf.keras.losses.Huber(reduction = tf.losses.Reduction.NONE)
+        elif args.regression_loss == 'giou':
+            self._regression_loss = tfa.losses.GIoULoss(reduction = tf.losses.Reduction.NONE)
+        else:
+            raise ValueError(f'Unknown loss {args.regression_loss}')
+
         self._epoch = tf.Variable(0, trainable=False, dtype=tf.int32)
         self._epoch_step = tf.Variable(0, trainable=False, dtype=tf.int32)
         self._grad_clip = args.grad_clip
@@ -145,8 +152,13 @@ class RetinaTrainer:
             class_g, bbox_g, c_mask, r_mask = x['class'], x['bbox'], x['class_mask'], x['regression_mask']
             class_loss = tfa.losses.sigmoid_focal_crossentropy(class_g, class_pred, from_logits=True, alpha=0.25, gamma=1.5) 
             class_loss = utils.mask_reduce_sum_over_batch(class_loss, c_mask)
-            bbox_pred_transformed = utils.bbox_from_fast_rcnn(self.anchors, bbox_pred)
-            regression_loss = self._regression_loss(bbox_g, bbox_pred_transformed)
+            if self.args.regression_loss == 'huber':
+                bbox_g_transformed = utils.bbox_to_fast_rcnn(self.anchors, bbox_g)
+                regression_loss = self._regression_loss(bbox_g_transformed, bbox_pred)
+            else: 
+                bbox_pred_transformed = utils.bbox_from_fast_rcnn(self.anchors, bbox_pred)
+                regression_loss = self._regression_loss(bbox_g, bbox_pred_transformed)
+
             regression_loss = utils.mask_reduce_sum_over_batch(regression_loss, r_mask)
             loss = class_loss + regression_loss
         grads = tp.gradient(loss, self.model.trainable_variables)
