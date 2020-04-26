@@ -22,7 +22,8 @@ if __name__ == '__main__':
     # Prepare network and trainer
     anchors_per_level = args.num_scales * len(args.aspect_ratios)
     network = efficientdet.EfficientDet(num_classes, anchors_per_level,
-            input_size = args.image_size, pyramid_levels = pyramid_levels) 
+            input_size = args.image_size, pyramid_levels = pyramid_levels,
+            filters=args.efficientdet_filters, num_layers = args.efficientdet_layers) 
     model = RetinaTrainer(network, anchors, train_dataset, dev_dataset, args)
 
     # Load weights
